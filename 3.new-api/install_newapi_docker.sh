@@ -34,9 +34,8 @@ NEWAPI_PORT=3000
 POSTGRES_PORT=5432
 REDIS_PORT=6379
 
-NGINX_PATH="/usr/local/nginx"
-CONF_D="$NGINX_PATH/conf/conf.d"
-SSL_DIR="$NGINX_PATH/conf/ssl"
+CONF_D="/etc/nginx/conf.d"
+SSL_DIR="/etc/nginx/ssl"
 
 DOCKER_ROOT="/opt/docker-services"
 SERVICE_DIR="$DOCKER_ROOT/new-api"
@@ -145,7 +144,7 @@ else
 fi
 
 # 检查 Nginx
-if [ ! -d "$NGINX_PATH" ]; then
+if ! command -v nginx &> /dev/null; then
     log_error "未检测到 Nginx，请先运行 install_nginx.sh"
     exit 1
 fi
@@ -659,7 +658,7 @@ log_step "[7/8] 配置 Nginx 反向代理..."
 
 # 检测 HTTP/3 支持
 NGINX_SUPPORTS_HTTP3=false
-if $NGINX_PATH/sbin/nginx -V 2>&1 | grep -q "http_v3_module"; then
+if nginx -V 2>&1 | grep -q "http_v3_module"; then
     NGINX_SUPPORTS_HTTP3=true
     log_info "检测到 HTTP/3 支持"
 fi
@@ -858,12 +857,12 @@ sed -i "s|NEWAPI_PORT_PLACEHOLDER|$NEWAPI_PORT|g" "$CONF_D/${DOMAIN}.conf"
 log_success "Nginx 配置已生成"
 
 # 测试并重载 Nginx
-if $NGINX_PATH/sbin/nginx -t >/dev/null 2>&1; then
+if nginx -t >/dev/null 2>&1; then
     systemctl reload nginx
     log_success "Nginx 已重载"
 else
     log_error "Nginx 配置测试失败"
-    $NGINX_PATH/sbin/nginx -t
+    nginx -t
 fi
 
 # ==================== 生成配置信息文件 ====================
@@ -957,7 +956,7 @@ cat >> "$INFO_FILE" <<EOF
 
 [Nginx 配置]
 配置文件:  $CONF_D/${DOMAIN}.conf
-测试配置:  $NGINX_PATH/sbin/nginx -t
+测试配置:  nginx -t
 重载配置:  systemctl reload nginx
 
 [Docker 网络]

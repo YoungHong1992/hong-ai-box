@@ -32,9 +32,8 @@
 # ==================== 全局配置 ====================
 
 CLIPROXY_PORT=8317
-NGINX_PATH="/usr/local/nginx"
-CONF_D="$NGINX_PATH/conf/conf.d"
-SSL_DIR="$NGINX_PATH/conf/ssl"
+CONF_D="/etc/nginx/conf.d"
+SSL_DIR="/etc/nginx/ssl"
 
 INSTALL_DIR="/opt/cliproxyapi"
 CONFIG_DIR="/etc/cliproxyapi"
@@ -81,7 +80,7 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-if [ ! -d "$NGINX_PATH" ]; then
+if ! command -v nginx &> /dev/null; then
     log_error "未检测到 Nginx，请先运行 install_nginx.sh"
     exit 1
 fi
@@ -603,7 +602,7 @@ if [ "$IS_UPGRADE" = false ] && [ -n "$DOMAIN" ]; then
 
     # 检测 HTTP/3 支持
     NGINX_SUPPORTS_HTTP3=false
-    if $NGINX_PATH/sbin/nginx -V 2>&1 | grep -q "http_v3_module"; then
+    if nginx -V 2>&1 | grep -q "http_v3_module"; then
         NGINX_SUPPORTS_HTTP3=true
     fi
 
@@ -946,12 +945,12 @@ EOF_NGINX_NO_H3
     log_success "Nginx 配置已生成"
 
     # 测试并重载
-    if $NGINX_PATH/sbin/nginx -t >/dev/null 2>&1; then
+    if nginx -t >/dev/null 2>&1; then
         systemctl reload nginx
         log_success "Nginx 已重载"
     else
         log_error "Nginx 配置测试失败"
-        $NGINX_PATH/sbin/nginx -t
+        nginx -t
     fi
 fi
 

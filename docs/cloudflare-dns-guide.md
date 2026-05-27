@@ -108,7 +108,7 @@ dig +short your-domain.com
 
 1. 在 Cloudflare **SSL/TLS → Origin Server** 中创建证书
 2. 下载证书和私钥
-3. 放到 `/usr/local/nginx/conf/ssl/{domain}/` 目录
+3. 放到 `/etc/nginx/ssl/{domain}/` 目录
 4. 将 Cloudflare SSL 模式设为 **Full (strict)**
 
 ### 4. 多个子域名可以用通配符吗？

@@ -119,9 +119,9 @@ vps_deployment_ai_tools/
 
 ### 0.nginx - Nginx 基础设施【必选】
 
-> **部署方式**: 源码编译
+> **部署方式**: 官方仓库安装
 
-- Nginx 1.28.1 源码编译，支持 HTTP/3 (QUIC)
+- Nginx 来自 nginx.org 官方主线仓库，支持 HTTP/3 (QUIC)
 - 自动开启 TCP BBR，优化系统内核参数
 - 构建模块化配置结构 (conf.d/)
 - 编译 Stream 模块，支持四层代理
@@ -234,7 +234,7 @@ cd 8.service-monitor && ./install_monitor.sh
 
 > **⚠️ 重要**：同一台服务器部署多个服务时，必须为每个服务使用不同的子域名。
 >
-> Nginx 配置文件路径为 `/usr/local/nginx/conf/conf.d/{域名}.conf`，相同域名会导致配置覆盖。
+> Nginx 配置文件路径为 `/etc/nginx/conf.d/{域名}.conf`，相同域名会导致配置覆盖。
 >
 > 正确示例：`proxy.example.com`、`api.example.com`、`newapi.example.com`
 
@@ -246,7 +246,7 @@ cd 8.service-monitor && ./install_monitor.sh
 
 ```bash
 systemctl status nginx
-/usr/local/nginx/sbin/nginx -t
+nginx -t
 systemctl reload nginx
 tail -f /var/log/nginx/error.log
 ```

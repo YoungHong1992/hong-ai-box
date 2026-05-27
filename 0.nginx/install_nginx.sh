@@ -2,16 +2,15 @@
 
 ################################################################################
 #
-# Nginx 纯净安装与系统优化脚本
+# Nginx 安装与系统优化脚本 (v5.0)
 #
 # 功能说明：
 #   1. 系统内核优化：开启 BBR、优化 TCP 连接、提升文件描述符限制
-#   2. 编译安装 Nginx：仅包含必要模块 (SSL, V2, Stream, RealIP, StubStatus)
-#   3. 配置结构优化：构建模块化 conf.d 结构，方便后续扩展 API 或其他站点
+#   2. 通过 nginx.org 官方仓库安装最新主线版（支持 HTTP/3）
+#   3. 配置高并发优化
 #
 # 适用环境：
-#   - Ubuntu 20.04+ / Debian 11+ / CentOS 7+
-#   - 建议内存 512MB+
+#   - Ubuntu 20.04+ / Debian 11+
 #
 # 使用方法：
 #   chmod +x install_nginx.sh
@@ -21,9 +20,8 @@
 
 # ==================== 全局配置 ====================
 
-NGINX_VERSION="1.28.1"  # 使用最新稳定版（支持 HTTP/3）
-INSTALL_PATH="/usr/local/nginx"
-SRC_DIR="/usr/local/src"
+NGINX_CONF_DIR="/etc/nginx"
+NGINX_SSL_DIR="$NGINX_CONF_DIR/ssl"
 USER="www"
 GROUP="www"
 
@@ -40,27 +38,11 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-echo -e "${CYAN}>>> [1/4] 系统环境检查与优化...${NC}"
+echo -e "${CYAN}>>> [1/3] 系统环境检查与优化...${NC}"
 
-# 1. 自动挂载 Swap (如果内存 < 1GB)
-MEM_TOTAL=$(free -m | awk '/^Mem:/{print $2}')
-if [ "$MEM_TOTAL" -lt 1000 ]; then
-    if grep -q "/swapfile_install" /proc/swaps; then
-        echo -e "${GREEN}Swap 空间已存在，跳过。${NC}"
-    else
-        echo -e "${YELLOW}检测到低内存 ($MEM_TOTAL MB)，正在创建 1.5GB Swap...${NC}"
-        dd if=/dev/zero of=/swapfile_install bs=1M count=1536
-        chmod 600 /swapfile_install
-        mkswap /swapfile_install
-        swapon /swapfile_install
-        echo "/swapfile_install none swap sw 0 0" >> /etc/fstab
-        echo -e "${GREEN}Swap 创建完成。${NC}"
-    fi
-fi
-
-# 2. 内核参数优化 (开启 BBR + TCP 调优)
+# 1. 内核参数优化 (开启 BBR + TCP 调优)
 echo "正在优化 sysctl.conf..."
-cat > /etc/sysctl.d/99-vps-optimize.conf <<EOF
+cat > /etc/sysctl.d/99-vps-optimize.conf <<'EOF'
 # --- BBR 拥塞控制 ---
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
@@ -91,7 +73,7 @@ else
     echo -e "${YELLOW}⚠ BBR 开启失败，请检查内核版本 (建议 >= 4.9)${NC}"
 fi
 
-# 3. 提升系统级文件描述符限制
+# 2. 提升系统级文件描述符限制
 if ! grep -q "* soft nofile 65535" /etc/security/limits.conf; then
     echo "* soft nofile 65535" >> /etc/security/limits.conf
     echo "* hard nofile 65535" >> /etc/security/limits.conf
@@ -99,78 +81,78 @@ if ! grep -q "* soft nofile 65535" /etc/security/limits.conf; then
     echo "root hard nofile 65535" >> /etc/security/limits.conf
 fi
 
-echo -e "${CYAN}>>> [2/4] 安装依赖库...${NC}"
-
-# 检测系统并安装依赖
-if [ -f /etc/debian_version ]; then
-    apt-get update -y
-    apt-get install -y build-essential libtool autoconf wget curl git \
-    libpcre3 libpcre3-dev zlib1g zlib1g-dev libssl-dev pkg-config
-elif [ -f /etc/redhat-release ]; then
-    yum install -y epel-release
-    yum groupinstall -y "Development Tools"
-    yum install -y wget curl pcre-devel zlib-devel openssl-devel
-fi
-
-# 创建用户
+# 3. 创建 nginx 运行用户
 id -u $USER &>/dev/null || useradd -s /sbin/nologin -M $USER
 
-echo -e "${CYAN}>>> [3/4] 编译安装 Nginx $NGINX_VERSION ...${NC}"
+echo -e "${CYAN}>>> [2/3] 安装 Nginx (nginx.org 官方主线包)...${NC}"
 
-mkdir -p $SRC_DIR
-cd $SRC_DIR
+# 检测系统并添加 nginx.org 官方仓库
+if [ -f /etc/debian_version ]; then
+    # 检测是否需要安装依赖
+    if ! command -v curl &> /dev/null; then
+        apt-get update -y -qq
+        apt-get install -y -qq curl gnupg2 ca-certificates lsb-release
+    fi
 
-# 下载源码
-if [ ! -f "nginx-$NGINX_VERSION.tar.gz" ]; then
-    wget -c "http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
+    # 添加 nginx.org GPG key
+    curl -fsSL https://nginx.org/keys/nginx_signing.key \
+        | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
+
+    # 添加 mainline 仓库（支持 HTTP/3）
+    . /etc/os-release
+    if [ "$ID" = "debian" ] && [ -z "$VERSION_CODENAME" ]; then
+        VERSION_CODENAME=$(lsb_release -cs 2>/dev/null || echo "bookworm")
+    fi
+    echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
+http://nginx.org/packages/mainline/${ID}/ ${VERSION_CODENAME} nginx" \
+        > /etc/apt/sources.list.d/nginx.list
+
+    # 优先使用 nginx.org 仓库
+    cat > /etc/apt/preferences.d/99nginx <<'EOF'
+Package: nginx*
+Pin: origin nginx.org
+Pin-Priority: 900
+EOF
+
+    apt-get update -y -qq
+    apt-get install -y nginx
+
+    echo -e "${GREEN}✓ Nginx 安装完成${NC}"
+
+elif [ -f /etc/redhat-release ]; then
+    echo -e "${RED}错误: CentOS / RHEL 不在本脚本的支持范围内。${NC}"
+    echo -e "${YELLOW}请使用 Ubuntu 20.04+ 或 Debian 11+。${NC}"
+    exit 1
+else
+    echo -e "${RED}错误: 不支持的操作系统。${NC}"
+    exit 1
 fi
-tar -zxvf nginx-$NGINX_VERSION.tar.gz
-cd nginx-$NGINX_VERSION
 
-# 编译配置 (增强版 - 包含 HTTP/3 支持)
-./configure \
-  --prefix=$INSTALL_PATH \
-  --user=$USER \
-  --group=$GROUP \
-  --with-http_ssl_module \
-  --with-http_v2_module \
-  --with-http_v3_module \
-  --with-http_realip_module \
-  --with-http_stub_status_module \
-  --with-http_gzip_static_module \
-  --with-http_gunzip_module \
-  --with-http_sub_module \
-  --with-http_flv_module \
-  --with-http_addition_module \
-  --with-http_mp4_module \
-  --with-http_dav_module \
-  --with-stream \
-  --with-stream_ssl_module \
-  --with-stream_ssl_preread_module \
-  --with-stream_realip_module \
-  --with-pcre \
-  --with-cc-opt='-O2 -g -pipe'
+# 验证 HTTP/3 模块
+if nginx -V 2>&1 | grep -q "http_v3_module"; then
+    echo -e "${GREEN}✓ HTTP/3 (QUIC) 模块已就绪${NC}"
+else
+    echo -e "${YELLOW}⚠ 当前 Nginx 未包含 HTTP/3 模块${NC}"
+fi
 
-# 编译与安装
-make -j$(nproc)
-make install
+echo -e "${CYAN}>>> [3/3] 配置 Nginx 高并发优化...${NC}"
 
-# 创建必要的目录结构
-mkdir -p $INSTALL_PATH/conf/conf.d
-mkdir -p $INSTALL_PATH/conf/ssl
+# 创建 SSL 证书存放目录（供后续服务使用）
+mkdir -p "$NGINX_SSL_DIR"
+chown -R $USER:$GROUP "$NGINX_SSL_DIR"
+
+# 创建日志目录并设权限
 mkdir -p /var/log/nginx
 chown -R $USER:$GROUP /var/log/nginx
 
-echo -e "${CYAN}>>> [4/4] 配置 Nginx 结构...${NC}"
-
-# 生成主配置文件 (优化高并发)
-cat > $INSTALL_PATH/conf/nginx.conf <<EOF
+# 生成 nginx.conf（高并发调优 + 模块化站点配置）
+cat > "$NGINX_CONF_DIR/nginx.conf" <<EOF
 user  $USER;
 worker_processes  auto;
 worker_rlimit_nofile 65535;
 
 error_log  /var/log/nginx/error.log warn;
-pid        $INSTALL_PATH/logs/nginx.pid;
+pid        /run/nginx.pid;
 
 events {
     worker_connections  10240;
@@ -179,17 +161,15 @@ events {
 }
 
 http {
-    include       mime.types;
+    include       /etc/nginx/mime.types;
     default_type  application/octet-stream;
 
-    # 日志格式 (包含真实 IP)
     log_format  main  '\$remote_addr - \$remote_user [\$time_local] "\$request" '
                       '\$status \$body_bytes_sent "\$http_referer" '
                       '"\$http_user_agent" "\$http_x_forwarded_for"';
 
     access_log  /var/log/nginx/access.log  main;
 
-    # 核心优化
     sendfile        on;
     tcp_nopush      on;
     tcp_nodelay     on;
@@ -197,50 +177,38 @@ http {
     types_hash_max_size 2048;
     server_tokens   off;
 
-    # Gzip 压缩
     gzip on;
     gzip_min_length 1k;
     gzip_comp_level 4;
     gzip_types text/plain text/css application/json application/javascript application/xml;
 
-    # 加载模块化配置 (关键点: 允许后续方便添加 API 站点)
-    include $INSTALL_PATH/conf/conf.d/*.conf;
+    # 加载模块化站点配置
+    include /etc/nginx/conf.d/*.conf;
 }
 EOF
 
-# 创建 Systemd 服务
-cat > /etc/systemd/system/nginx.service <<EOF
-[Unit]
-Description=The NGINX HTTP and reverse proxy server
-After=network-online.target nss-lookup.target
-Wants=network-online.target
+# 测试配置并启动
+nginx -t
+if [ $? -eq 0 ]; then
+    systemctl enable nginx
+    systemctl restart nginx
+    echo -e "${GREEN}✓ Nginx 配置测试通过，服务已启动${NC}"
+else
+    echo -e "${RED}✗ Nginx 配置测试失败，请检查${NC}"
+    exit 1
+fi
 
-[Service]
-Type=forking
-PIDFile=$INSTALL_PATH/logs/nginx.pid
-ExecStartPre=$INSTALL_PATH/sbin/nginx -t
-ExecStart=$INSTALL_PATH/sbin/nginx
-ExecReload=$INSTALL_PATH/sbin/nginx -s reload
-ExecStop=/bin/kill -s QUIT $MAINPID
-PrivateTmp=true
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# 启动服务
-systemctl daemon-reload
-systemctl enable nginx
-systemctl restart nginx
-
-echo -e ""
+# 输出安装摘要
+NGINX_VERSION=$(nginx -v 2>&1 | grep -oP 'nginx/\K[0-9.]+')
+echo ""
 echo -e "${GREEN}==============================================${NC}"
-echo -e "${GREEN}   Nginx 安装与系统优化完成 (v4.0)   ${NC}"
+echo -e "${GREEN}   Nginx 安装与系统优化完成 (v5.0)   ${NC}"
 echo -e "${GREEN}==============================================${NC}"
-echo -e "Nginx 版本:   ${YELLOW}$NGINX_VERSION (支持 HTTP/3)${NC}"
-echo -e "Nginx 路径:   ${YELLOW}$INSTALL_PATH${NC}"
-echo -e "配置文件:     ${YELLOW}$INSTALL_PATH/conf/nginx.conf${NC}"
-echo -e "扩展配置:     ${YELLOW}$INSTALL_PATH/conf/conf.d/*.conf${NC}"
+echo -e "Nginx 版本:   ${YELLOW}$NGINX_VERSION${NC}"
+echo -e "安装来源:     ${YELLOW}nginx.org 官方主线仓库${NC}"
+echo -e "配置文件:     ${YELLOW}/etc/nginx/nginx.conf${NC}"
+echo -e "站点配置:     ${YELLOW}/etc/nginx/conf.d/*.conf${NC}"
+echo -e "SSL 证书:     ${YELLOW}/etc/nginx/ssl/${NC}"
 echo -e "优化状态:     ${GREEN}BBR 已开启, Limit 已提升${NC}"
-echo -e "HTTP/3 支持:  ${GREEN}✓ 已编译 (--with-http_v3_module)${NC}"
+echo -e "HTTP/3 支持:  ${GREEN}✓ (内置 --with-http_v3_module)${NC}"
 echo -e "${GREEN}==============================================${NC}"

@@ -105,18 +105,17 @@ check_root() {
 # ==================== 服务安装函数 ====================
 
 install_nginx() {
-    print_section "安装 Nginx 1.28.1 (HTTP/3)"
+    print_section "安装 Nginx (HTTP/3)"
 
     echo -e "${WHITE}功能说明:${NC}"
-    echo "  • Nginx 1.28.1 源码编译安装，支持最新的 HTTP/3 (QUIC) 协议"
+    echo "  • Nginx 来自 nginx.org 官方主线仓库，支持最新的 HTTP/3 (QUIC) 协议"
     echo "  • 自动开启 TCP BBR 拥塞控制算法，提升网络性能 20-30%"
     echo "  • 优化系统内核参数，提升文件描述符限制"
     echo "  • 构建模块化配置结构 (conf.d/)，方便后续服务扩展"
-    echo "  • 编译 Stream 模块，支持四层 TCP/UDP 负载均衡"
     echo ""
     echo -e "${YELLOW}⚠️  这是所有后续服务的基础组件，必须安装！${NC}"
     echo ""
-    echo -e "${DIM}预计安装时间: 5-10 分钟（取决于服务器性能）${NC}"
+    echo -e "${DIM}预计安装时间: 约 30 秒（apt 安装，无需编译）${NC}"
     echo ""
 
     if confirm "是否开始安装 Nginx？" "y"; then
@@ -127,7 +126,7 @@ install_nginx() {
 
         if [ $? -eq 0 ]; then
             NGINX_INSTALLED=true
-            INSTALLED_SERVICES+=("Nginx 1.28.1")
+            INSTALLED_SERVICES+=("Nginx (HTTP/3)")
             echo ""
             echo -e "${GREEN}✓ Nginx 安装成功！${NC}"
         else
@@ -365,7 +364,7 @@ print_summary() {
     echo ""
     echo "  Nginx:"
     echo "    systemctl status nginx"
-    echo "    /usr/local/nginx/sbin/nginx -t"
+    echo "    nginx -t"
     echo "    systemctl reload nginx"
     echo ""
 
@@ -401,7 +400,7 @@ main() {
     echo "本工具将引导您按顺序部署 VPS 集群的各个组件。"
     echo ""
     echo -e "${CYAN}可用组件:${NC}"
-    echo "  0. Nginx 1.28.1 (HTTP/3)  - 基础设施【必选】"
+    echo "  0. Nginx (HTTP/3)          - 基础设施【必选】"
     echo "  01. Docker 容器环境        - 容器服务前置依赖【推荐】"
     echo "  1. V2Ray 代理节点          - 科学上网"
     echo "  2. CliproxyAPI            - 轻量 AI API 转发"
