@@ -1,0 +1,27 @@
+================================================
+     VLESS + Reality 节点 (MeiDe_Reality)
+================================================
+伪装目标: www.microsoft.com
+服务器:   212.103.62.109
+端口:     8443
+
+[连接参数]
+协议:      VLESS
+地址:      212.103.62.109
+端口:      8443
+UUID:      8aedc5ed-6936-4f18-a5c6-c794adba1e9c
+Flow:      xtls-rprx-vision
+传输:      tcp
+安全:      reality
+公钥:      hMUjul4IsWS8cXxhfoj9XMDyUmKPFmuAQdqdA37hLCw
+SNI:       www.microsoft.com
+Fingerprint: chrome
+shortId:   24c0aafb1e814618
+
+[分享链接]
+vless://8aedc5ed-6936-4f18-a5c6-c794adba1e9c@212.103.62.109:8443?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&sni=www.microsoft.com&pbk=hMUjul4IsWS8cXxhfoj9XMDyUmKPFmuAQdqdA37hLCw&sid=24c0aafb1e814618#MeiDe_Reality
+
+[管理]
+systemctl start|stop|restart xray
+journalctl -u xray -f
+================================================
