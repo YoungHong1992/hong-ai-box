@@ -120,7 +120,7 @@ log_step "[1/7] 检测当前服务状态..."
 cd "$SERVICE_DIR"
 
 # 获取域名（从 Nginx 配置）
-DOMAIN=$(find /usr/local/nginx/conf/conf.d/ -name "*newapi*.conf" 2>/dev/null | head -1 | xargs -I {} basename {} .conf 2>/dev/null)
+DOMAIN=$(find /etc/nginx/conf.d/ -name "*newapi*.conf" 2>/dev/null | head -1 | xargs -I {} basename {} .conf 2>/dev/null)
 
 if [ -z "$DOMAIN" ]; then
     DOMAIN="unknown"
@@ -243,7 +243,7 @@ echo ""
 log_step "[5/7] 删除 Nginx 配置..."
 
 # 查找 Nginx 配置文件
-NGINX_CONF=$(find /usr/local/nginx/conf/conf.d/ -name "*newapi*.conf" 2>/dev/null | head -1)
+NGINX_CONF=$(find /etc/nginx/conf.d/ -name "*newapi*.conf" 2>/dev/null | head -1)
 
 if [ -n "$NGINX_CONF" ] && [ -f "$NGINX_CONF" ]; then
     log_info "检测到 Nginx 配置: $NGINX_CONF"
@@ -254,8 +254,8 @@ if [ -n "$NGINX_CONF" ] && [ -f "$NGINX_CONF" ]; then
     if systemctl is-active --quiet nginx 2>/dev/null; then
         systemctl reload nginx
         log_success "Nginx 已重载"
-    elif [ -f /usr/local/nginx/sbin/nginx ]; then
-        /usr/local/nginx/sbin/nginx -s reload 2>/dev/null
+    elif command -v nginx &> /dev/null; then
+        systemctl reload nginx 2>/dev/null
         log_success "Nginx 已重载"
     fi
 else
@@ -269,7 +269,7 @@ echo ""
 log_step "[6/7] 删除 SSL 证书..."
 
 if [ "$DOMAIN" != "unknown" ]; then
-    SSL_DIR="/usr/local/nginx/conf/ssl/$DOMAIN"
+    SSL_DIR="/etc/nginx/ssl/$DOMAIN"
 
     if [ -d "$SSL_DIR" ]; then
         read -p "是否删除 SSL 证书？($DOMAIN) (y/N): " DELETE_SSL

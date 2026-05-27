@@ -30,9 +30,8 @@
 
 # ==================== 全局配置 ====================
 
-NGINX_PATH="/usr/local/nginx"
-CONF_D="$NGINX_PATH/conf/conf.d"
-SSL_DIR="$NGINX_PATH/conf/ssl"
+CONF_D="/etc/nginx/conf.d"
+SSL_DIR="/etc/nginx/ssl"
 
 # 颜色定义
 RED='\033[0;31m'
@@ -114,7 +113,7 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-if [ ! -d "$NGINX_PATH" ]; then
+if ! command -v nginx &> /dev/null; then
     echo -e "${RED}错误: 未检测到 Nginx 安装。${NC}"
     exit 1
 fi
@@ -233,7 +232,7 @@ server {
 EOF
     TEMP_CONF=true
     mkdir -p /var/www/acme
-    $NGINX_PATH/sbin/nginx -t >/dev/null 2>&1 && systemctl reload nginx
+    nginx -t >/dev/null 2>&1 && systemctl reload nginx
 fi
 
 # 申请 ECC-256 证书
@@ -380,12 +379,12 @@ else
 fi
 
 # 测试并重载 Nginx
-if $NGINX_PATH/sbin/nginx -t >/dev/null 2>&1; then
+if nginx -t >/dev/null 2>&1; then
     systemctl reload nginx
     echo -e "${GREEN}✓ Nginx 配置测试通过并已重载${NC}"
 else
     echo -e "${RED}⚠ Nginx 配置测试失败，请检查配置${NC}"
-    $NGINX_PATH/sbin/nginx -t
+    nginx -t
 fi
 
 # ==================== 输出结果 ====================

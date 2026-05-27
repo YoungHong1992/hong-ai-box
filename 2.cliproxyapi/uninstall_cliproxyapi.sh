@@ -123,7 +123,7 @@ echo -e "${GREEN}✓ Nginx 日志已清理${NC}"
 echo -e "${CYAN}>>> [6/6] 删除 Nginx 配置...${NC}"
 
 # 查找并删除 CliproxyAPI 相关的 Nginx 配置
-NGINX_CONF_DIR="/usr/local/nginx/conf/conf.d"
+NGINX_CONF_DIR="/etc/nginx/conf.d"
 CLIPROXY_CONFIGS=$(find "$NGINX_CONF_DIR" -name "*.conf" -exec grep -l "cliproxyapi\|8317" {} \; 2>/dev/null)
 
 if [ -n "$CLIPROXY_CONFIGS" ]; then
@@ -140,21 +140,21 @@ if [ -n "$CLIPROXY_CONFIGS" ]; then
         echo -e "${GREEN}✓ 已删除: $conf${NC}"
 
         # 询问是否删除 SSL 证书
-        if [ -n "$DOMAIN" ] && [ -d "/usr/local/nginx/conf/ssl/$DOMAIN" ]; then
+        if [ -n "$DOMAIN" ] && [ -d "/etc/nginx/ssl/$DOMAIN" ]; then
             echo ""
             read -p "是否删除 $DOMAIN 的 SSL 证书? (y/N): " -n 1 -r
             echo
             if [[ $REPLY =~ ^[Yy]$ ]]; then
-                rm -rf "/usr/local/nginx/conf/ssl/$DOMAIN"
-                echo -e "${GREEN}✓ 已删除 SSL 证书: /usr/local/nginx/conf/ssl/$DOMAIN${NC}"
+                rm -rf "/etc/nginx/ssl/$DOMAIN"
+                echo -e "${GREEN}✓ 已删除 SSL 证书: /etc/nginx/ssl/$DOMAIN${NC}"
             else
-                echo -e "${YELLOW}✓ 已保留 SSL 证书: /usr/local/nginx/conf/ssl/$DOMAIN${NC}"
+                echo -e "${YELLOW}✓ 已保留 SSL 证书: /etc/nginx/ssl/$DOMAIN${NC}"
             fi
         fi
     done
 
     # 测试并重载 Nginx
-    if /usr/local/nginx/sbin/nginx -t >/dev/null 2>&1; then
+    if nginx -t >/dev/null 2>&1; then
         systemctl reload nginx
         echo -e "${GREEN}✓ Nginx 已重载${NC}"
     else

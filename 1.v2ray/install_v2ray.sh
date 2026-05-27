@@ -21,9 +21,8 @@
 # ==================== 全局配置 ====================
 
 V2RAY_PORT=10000
-NGINX_PATH="/usr/local/nginx"
-CONF_D="$NGINX_PATH/conf/conf.d"
-SSL_DIR="$NGINX_PATH/conf/ssl"
+CONF_D="/etc/nginx/conf.d"
+SSL_DIR="/etc/nginx/ssl"
 WEB_ROOT="/var/www/static"
 
 # 颜色定义
@@ -39,7 +38,7 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-if [ ! -d "$NGINX_PATH" ]; then
+if ! command -v nginx &> /dev/null; then
     echo -e "${RED}错误: 未检测到 Nginx，请先运行 install_nginx.sh${NC}"
     exit 1
 fi

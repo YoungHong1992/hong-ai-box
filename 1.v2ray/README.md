@@ -59,7 +59,7 @@ Nginx (TLS 终止)
 1. **Nginx 已安装**
    ```bash
    # 如未安装，先运行
-   cd "../0.nginx部署（1.28.1 HTTP3）"
+   cd "../0.nginx"
    ./install_nginx.sh
    ```
 
@@ -148,7 +148,7 @@ journalctl -u v2ray -f
 
 ```bash
 # 测试配置
-/usr/local/nginx/sbin/nginx -t
+nginx -t
 
 # 重载配置
 systemctl reload nginx
@@ -250,7 +250,7 @@ netstat -tlnp | grep :80
 systemctl status v2ray
 
 # 检查 Nginx 配置
-/usr/local/nginx/sbin/nginx -t
+nginx -t
 ```
 
 ---
@@ -260,8 +260,8 @@ systemctl status v2ray
 | 文件 | 路径 |
 |------|------|
 | V2Ray 配置 | `/usr/local/etc/v2ray/config.json` |
-| Nginx 站点配置 | `/usr/local/nginx/conf/conf.d/{domain}.conf` |
-| SSL 证书 | `/usr/local/nginx/conf/ssl/{domain}/` |
+| Nginx 站点配置 | `/etc/nginx/conf.d/{domain}.conf` |
+| SSL 证书 | `/etc/nginx/ssl/{domain}/` |
 | 伪装网站 | `/var/www/static/index.html` |
 | 连接信息 | `./v2ray_node_info.txt` |
 
