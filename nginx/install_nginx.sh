@@ -2,7 +2,8 @@
 
 ################################################################################
 #
-# Nginx 安装与系统优化脚本 (v5.0)
+# Nginx 安装与系统优化脚本
+# 版本: v3.5.0
 #
 # 功能说明：
 #   1. 系统内核优化：开启 BBR、优化 TCP 连接、提升文件描述符限制
@@ -14,9 +15,42 @@
 #
 # 使用方法：
 #   chmod +x install_nginx.sh
-#   ./install_nginx.sh
+#   ./install_nginx.sh          # 安装
+#   ./install_nginx.sh -h       # 显示帮助
 #
 ################################################################################
+
+set -euo pipefail
+
+# ==================== 加载公共库 ====================
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/common.sh"
+
+# ==================== 帮助信息 ====================
+show_help() {
+    cat <<'EOF'
+Nginx 安装与系统优化脚本
+
+用法:
+  ./install_nginx.sh       # 安装 Nginx + 系统优化
+  ./install_nginx.sh -h    # 显示此帮助
+
+功能:
+  - 开启 TCP BBR 拥塞控制
+  - 优化系统内核参数
+  - 从 nginx.org 官方主线仓库安装 Nginx (含 HTTP/3)
+  - 配置高并发优化
+
+支持系统: Ubuntu 20.04+, Debian 11+
+EOF
+    exit 0
+}
+
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help) show_help ;;
+    esac
+done
 
 # ==================== 全局配置 ====================
 
@@ -25,24 +59,15 @@ NGINX_SSL_DIR="$NGINX_CONF_DIR/ssl"
 USER="www"
 GROUP="www"
 
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# ==================== 部署流程 ====================
+check_root
+setup_logging "nginx-install"
 
-# ==================== 检查 Root 权限 ====================
-if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}错误: 必须使用 root 权限运行此脚本。${NC}"
-    exit 1
-fi
-
-echo -e "${CYAN}>>> [1/3] 系统环境检查与优化...${NC}"
+log_step "[1/3] 系统环境检查与优化..."
 
 # 1. 内核参数优化 (开启 BBR + TCP 调优)
-echo "正在优化 sysctl.conf..."
-cat > /etc/sysctl.d/99-vps-optimize.conf <<'EOF'
+log_info "优化 sysctl.conf..."
+cat > /etc/sysctl.d/99-vps-optimize.conf <<'SYSCTL_EOF'
 # --- BBR 拥塞控制 ---
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
@@ -60,7 +85,7 @@ net.core.netdev_max_backlog = 8192
 
 # --- 文件描述符 ---
 fs.file-max = 1000000
-EOF
+SYSCTL_EOF
 
 # 应用内核参数
 sysctl -p /etc/sysctl.d/99-vps-optimize.conf > /dev/null 2>&1
@@ -68,13 +93,13 @@ sysctl -p /etc/sysctl.d/99-vps-optimize.conf > /dev/null 2>&1
 # 验证 BBR
 BBR_STATUS=$(sysctl net.ipv4.tcp_congestion_control | awk '{print $3}')
 if [ "$BBR_STATUS" == "bbr" ]; then
-    echo -e "${GREEN}✓ TCP BBR 已成功开启${NC}"
+    log_success "TCP BBR 已成功开启"
 else
-    echo -e "${YELLOW}⚠ BBR 开启失败，请检查内核版本 (建议 >= 4.9)${NC}"
+    log_warning "BBR 开启失败，请检查内核版本 (建议 >= 4.9)"
 fi
 
 # 2. 提升系统级文件描述符限制
-if ! grep -q "* soft nofile 65535" /etc/security/limits.conf; then
+if ! grep -q "* soft nofile 65535" /etc/security/limits.conf 2>/dev/null; then
     echo "* soft nofile 65535" >> /etc/security/limits.conf
     echo "* hard nofile 65535" >> /etc/security/limits.conf
     echo "root soft nofile 65535" >> /etc/security/limits.conf
@@ -82,9 +107,11 @@ if ! grep -q "* soft nofile 65535" /etc/security/limits.conf; then
 fi
 
 # 3. 创建 nginx 运行用户
-id -u $USER &>/dev/null || useradd -s /sbin/nologin -M $USER
+id -u "$USER" &>/dev/null || useradd -s /sbin/nologin -M "$USER"
 
-echo -e "${CYAN}>>> [2/3] 安装 Nginx (nginx.org 官方主线包)...${NC}"
+# ==================== 步骤 2: 安装 Nginx ====================
+
+log_step "[2/3] 安装 Nginx (nginx.org 官方主线包)..."
 
 # 检测系统并添加 nginx.org 官方仓库
 if [ -f /etc/debian_version ]; then
@@ -95,12 +122,12 @@ if [ -f /etc/debian_version ]; then
     fi
 
     # 添加 nginx.org GPG key
-    curl -fsSL https://nginx.org/keys/nginx_signing.key \
+    curl -fsSL --connect-timeout 30 https://nginx.org/keys/nginx_signing.key \
         | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
 
     # 添加 mainline 仓库（支持 HTTP/3）
     . /etc/os-release
-    if [ "$ID" = "debian" ] && [ -z "$VERSION_CODENAME" ]; then
+    if [ "$ID" = "debian" ] && [ -z "${VERSION_CODENAME:-}" ]; then
         VERSION_CODENAME=$(lsb_release -cs 2>/dev/null || echo "bookworm")
     fi
     echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
@@ -108,45 +135,53 @@ http://nginx.org/packages/mainline/${ID}/ ${VERSION_CODENAME} nginx" \
         > /etc/apt/sources.list.d/nginx.list
 
     # 优先使用 nginx.org 仓库
-    cat > /etc/apt/preferences.d/99nginx <<'EOF'
+    cat > /etc/apt/preferences.d/99nginx <<'APT_PREF_EOF'
 Package: nginx*
 Pin: origin nginx.org
 Pin-Priority: 900
-EOF
+APT_PREF_EOF
 
     apt-get update -y -qq
     apt-get install -y nginx
 
-    echo -e "${GREEN}✓ Nginx 安装完成${NC}"
+    log_success "Nginx 安装完成"
 
 elif [ -f /etc/redhat-release ]; then
-    echo -e "${RED}错误: CentOS / RHEL 不在本脚本的支持范围内。${NC}"
-    echo -e "${YELLOW}请使用 Ubuntu 20.04+ 或 Debian 11+。${NC}"
+    log_error "CentOS / RHEL 不在本脚本的支持范围内。"
+    log_info "请使用 Ubuntu 20.04+ 或 Debian 11+。"
+    log_info "对于 RHEL 系列，请参考 nginx.org 官方文档手动安装。"
     exit 1
 else
-    echo -e "${RED}错误: 不支持的操作系统。${NC}"
+    log_error "不支持的操作系统。"
     exit 1
 fi
 
 # 验证 HTTP/3 模块
 if nginx -V 2>&1 | grep -q "http_v3_module"; then
-    echo -e "${GREEN}✓ HTTP/3 (QUIC) 模块已就绪${NC}"
+    log_success "HTTP/3 (QUIC) 模块已就绪"
 else
-    echo -e "${YELLOW}⚠ 当前 Nginx 未包含 HTTP/3 模块${NC}"
+    log_warning "当前 Nginx 未包含 HTTP/3 模块"
 fi
 
-echo -e "${CYAN}>>> [3/3] 配置 Nginx 高并发优化...${NC}"
+# ==================== 步骤 3: 配置 Nginx ====================
+
+log_step "[3/3] 配置 Nginx 高并发优化..."
+
+# 备份已有配置
+if [ -f "$NGINX_CONF_DIR/nginx.conf" ]; then
+    backup_file "$NGINX_CONF_DIR/nginx.conf"
+fi
 
 # 创建 SSL 证书存放目录（供后续服务使用）
 mkdir -p "$NGINX_SSL_DIR"
-chown -R $USER:$GROUP "$NGINX_SSL_DIR"
+chown -R "$USER:$GROUP" "$NGINX_SSL_DIR"
 
 # 创建日志目录并设权限
 mkdir -p /var/log/nginx
-chown -R $USER:$GROUP /var/log/nginx
+chown -R "$USER:$GROUP" /var/log/nginx
 
 # 生成 nginx.conf（高并发调优 + 模块化站点配置）
-cat > "$NGINX_CONF_DIR/nginx.conf" <<EOF
+cat > "$NGINX_CONF_DIR/nginx.conf" <<NGINX_EOF
 user  $USER;
 worker_processes  auto;
 worker_rlimit_nofile 65535;
@@ -185,30 +220,33 @@ http {
     # 加载模块化站点配置
     include /etc/nginx/conf.d/*.conf;
 }
-EOF
+NGINX_EOF
 
 # 测试配置并启动
-nginx -t
-if [ $? -eq 0 ]; then
+if nginx -t; then
     systemctl enable nginx
     systemctl restart nginx
-    echo -e "${GREEN}✓ Nginx 配置测试通过，服务已启动${NC}"
+    log_success "Nginx 配置测试通过，服务已启动"
 else
-    echo -e "${RED}✗ Nginx 配置测试失败，请检查${NC}"
+    log_error "Nginx 配置测试失败，请检查"
     exit 1
 fi
 
-# 输出安装摘要
-NGINX_VERSION=$(nginx -v 2>&1 | grep -oP 'nginx/\K[0-9.]+')
+# ==================== 输出安装摘要 ====================
+
+NGINX_VERSION=$(nginx -v 2>&1 | grep -oP 'nginx/\K[0-9.]+' || echo "unknown")
 echo ""
 echo -e "${GREEN}==============================================${NC}"
-echo -e "${GREEN}   Nginx 安装与系统优化完成 (v5.0)   ${NC}"
+echo -e "${GREEN}   Nginx 安装与系统优化完成${NC}"
 echo -e "${GREEN}==============================================${NC}"
+echo -e "版本:         ${GREEN}v${COMMON_VERSION}${NC}"
 echo -e "Nginx 版本:   ${YELLOW}$NGINX_VERSION${NC}"
 echo -e "安装来源:     ${YELLOW}nginx.org 官方主线仓库${NC}"
 echo -e "配置文件:     ${YELLOW}/etc/nginx/nginx.conf${NC}"
 echo -e "站点配置:     ${YELLOW}/etc/nginx/conf.d/*.conf${NC}"
 echo -e "SSL 证书:     ${YELLOW}/etc/nginx/ssl/${NC}"
 echo -e "优化状态:     ${GREEN}BBR 已开启, Limit 已提升${NC}"
-echo -e "HTTP/3 支持:  ${GREEN}✓ (内置 --with-http_v3_module)${NC}"
+echo -e "HTTP/3 支持:  ${GREEN}$(detect_nginx_http3 && echo '✓' || echo '✗')${NC}"
 echo -e "${GREEN}==============================================${NC}"
+echo ""
+log_success "日志已保存: $DEPLOY_LOG_FILE"

@@ -3,331 +3,198 @@
 ################################################################################
 #
 # New-API Docker 部署脚本
+# 版本: v3.5.0
 #
 # 功能说明：
 #   1. 部署 New-API AI 模型聚合管理系统（Docker 方式）
 #   2. 自动配置 PostgreSQL / MySQL 数据库
 #   3. 自动配置 Redis 缓存
-#   4. 自动申请 SSL 证书
+#   4. 自动申请 SSL 证书 / 自签名证书
 #   5. 自动配置 Nginx 反向代理
-#   6. 生成随机密码并保存到信息文件
+#   6. 生成安全随机密码并保存到信息文件
 #
-# 部署架构：
-#   Docker Compose: new-api + PostgreSQL + Redis
-#   Nginx: 反向代理到 localhost:3000
-#   数据持久化: Docker Volume
+# 用法:
+#   ./install_newapi_docker.sh        # 交互式部署
+#   ./install_newapi_docker.sh -h     # 显示帮助
 #
 # 前置条件：
 #   - Docker 和 docker-compose 已安装
 #   - Nginx 已安装（通过 install_nginx.sh）
-#   - 域名已解析到本服务器
-#
-# 参考来源：
-#   - GitHub: https://github.com/QuantumNous/new-api
-#   - 官方文档: https://docs.newapi.pro/zh/docs
+#   - 域名需已解析到本服务器
 #
 ################################################################################
 
+set -euo pipefail
+
+# ==================== 加载公共库 ====================
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib/common.sh"
+
+# ==================== 帮助 ====================
+show_help() {
+    cat <<'EOF'
+New-API Docker 部署脚本
+
+用法:
+  ./install_newapi_docker.sh       # 交互式部署
+  ./install_newapi_docker.sh -h    # 显示此帮助
+
+功能:
+  - Docker Compose 部署 (New-API + PostgreSQL/MySQL + Redis)
+  - 支持域名/IP/HTTP 三种访问模式
+  - 自动申请 Let's Encrypt 证书
+  - Nginx 反向代理 + HTTP/3 支持
+
+前置条件:
+  - 已安装 Docker (install_docker.sh)
+  - 已安装 Nginx (install_nginx.sh)
+  - 域名模式需 DNS 已解析
+EOF
+    exit 0
+}
+
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help) show_help ;;
+    esac
+done
+
 # ==================== 全局配置 ====================
-
 NEWAPI_PORT=3000
-POSTGRES_PORT=5432
-REDIS_PORT=6379
-
 CONF_D="/etc/nginx/conf.d"
 SSL_DIR="/etc/nginx/ssl"
-
 DOCKER_ROOT="/opt/docker-services"
 SERVICE_DIR="$DOCKER_ROOT/new-api"
 DATA_DIR="$SERVICE_DIR/data"
 LOGS_DIR="$SERVICE_DIR/logs"
-
 GITHUB_REPO="QuantumNous/new-api"
 DOCKER_IMAGE="calciumion/new-api:latest"
-
-# Docker 网络名称（供其他服务复用）
 DOCKER_NETWORK="ai-services"
 
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-CYAN='\033[0;36m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-# ==================== 日志函数 ====================
-
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-log_step() {
-    echo -e "${CYAN}[STEP]${NC} $1"
-}
-
-# ==================== 工具函数 ====================
-
-# 生成随机密码（32位）
-generate_password() {
-    local chars="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    local password=""
-    for i in {1..32}; do
-        password="${password}${chars:$((RANDOM % ${#chars})):1}"
-    done
-    echo "$password"
-}
-
-# 生成 Session Secret（48位）
-generate_session_secret() {
-    local chars="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    local secret=""
-    for i in {1..48}; do
-        secret="${secret}${chars:$((RANDOM % ${#chars})):1}"
-    done
-    echo "$secret"
-}
-
 # ==================== 环境检查 ====================
+check_root
+setup_logging "newapi-install"
 
-if [ "$EUID" -ne 0 ]; then
-    log_error "必须使用 root 权限运行。"
-    exit 1
-fi
+ensure_commands curl wget
 
-# 检查 Docker，未安装则尝试自动安装
 if ! command -v docker &> /dev/null; then
     log_warning "未检测到 Docker，尝试自动安装..."
-
-    # 定位 Docker 安装脚本
-    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
     DOCKER_INSTALLER="$SCRIPT_DIR/../docker/install_docker.sh"
-
     if [ -f "$DOCKER_INSTALLER" ]; then
         source "$DOCKER_INSTALLER"
         if ! ensure_docker; then
-            log_error "Docker 自动安装失败，请手动安装。"
-            log_info "安装命令: curl -fsSL https://get.docker.com | sh"
+            log_error "Docker 自动安装失败。"
             exit 1
         fi
     else
         log_error "未找到 Docker 安装脚本: $DOCKER_INSTALLER"
-        log_info "安装命令: curl -fsSL https://get.docker.com | sh"
         exit 1
     fi
 fi
 
-# 检查 docker-compose
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null 2>&1; then
-    log_error "未检测到 docker-compose，请先安装。"
-    log_info "安装命令: apt-get install docker-compose-plugin 或 yum install docker-compose-plugin"
+COMPOSE_CMD=$(detect_compose_cmd)
+if [ -z "$COMPOSE_CMD" ]; then
+    log_error "未检测到 docker-compose。请安装: apt-get install docker-compose-plugin"
     exit 1
 fi
 
-# 统一使用 docker compose（新版）或 docker-compose（旧版）
-if docker compose version &> /dev/null 2>&1; then
-    COMPOSE_CMD="docker compose"
-else
-    COMPOSE_CMD="docker-compose"
-fi
-
-# 检查 Nginx
 if ! command -v nginx &> /dev/null; then
     log_error "未检测到 Nginx，请先运行 install_nginx.sh"
     exit 1
 fi
 
-# 检查依赖工具
-for cmd in curl wget; do
-    if ! command -v $cmd &> /dev/null; then
-        log_error "缺少必要工具 $cmd，请安装后重试。"
-        exit 1
-    fi
-done
+# 端口检查
+ensure_port_available "$NEWAPI_PORT" "New-API"
 
-# ==================== 欢迎横幅 ====================
-
+# ==================== 欢迎 ====================
 clear
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${CYAN}   New-API Docker 部署程序${NC}"
+echo -e "${CYAN}   New-API Docker 部署程序 v${COMMON_VERSION}${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-# 检查是否已安装
 if [ -f "$SERVICE_DIR/docker-compose.yml" ]; then
     log_warning "检测到已安装 New-API"
-    echo ""
-    read -p "是否覆盖安装？(y/N): " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    if ! confirm "是否覆盖安装？"; then
         log_info "安装已取消。"
         exit 0
     fi
 fi
 
 # ==================== 交互输入 ====================
-
 log_step "[1/8] 请输入配置信息"
 echo ""
 
-# 访问方式选择
-echo -e "${CYAN}>>> 请选择访问方式${NC}"
-echo ""
-echo "  1) 使用域名（推荐）- 自动申请 Let's Encrypt 证书"
-echo "  2) 使用 IP 地址   - 自签名证书，浏览器会提示不安全"
-echo "  3) 仅使用 HTTP    - 无 SSL 证书，仅限内网/开发环境"
-echo ""
-read -p "请选择 [1/2/3]: " ACCESS_MODE
+MODE=$(select_access_mode)
 
-USE_DOMAIN=true
+USE_DOMAIN=false
 USE_HTTP_ONLY=false
-if [ "$ACCESS_MODE" = "2" ]; then
-    USE_DOMAIN=false
-    # 自动获取服务器 IP
-    SERVER_IP=$(curl -s --connect-timeout 5 https://api.ipify.org || curl -s --connect-timeout 5 https://ifconfig.me || hostname -I | awk '{print $1}')
-    echo ""
-    echo -e "检测到服务器 IP: ${GREEN}$SERVER_IP${NC}"
-    read -p "确认使用此 IP？(y/n，或输入其他 IP): " IP_CONFIRM
-    if [[ "$IP_CONFIRM" =~ ^[Yy]$ ]] || [ -z "$IP_CONFIRM" ]; then
-        DOMAIN="$SERVER_IP"
-    elif [[ "$IP_CONFIRM" =~ ^[Nn]$ ]]; then
-        read -p "请输入 IP 地址: " DOMAIN
-    else
-        DOMAIN="$IP_CONFIRM"
-    fi
-elif [ "$ACCESS_MODE" = "3" ]; then
-    USE_DOMAIN=false
-    USE_HTTP_ONLY=true
-    # 自动获取服务器 IP
-    SERVER_IP=$(curl -s --connect-timeout 5 https://api.ipify.org || curl -s --connect-timeout 5 https://ifconfig.me || hostname -I | awk '{print $1}')
-    echo ""
-    echo -e "检测到服务器 IP: ${GREEN}$SERVER_IP${NC}"
-    echo -e "${YELLOW}⚠️  HTTP 模式警告：${NC}"
-    echo -e "${YELLOW}   - 数据传输不加密，API Key 可能泄露${NC}"
-    echo -e "${YELLOW}   - 仅建议在内网或开发环境使用${NC}"
-    echo ""
-    read -p "确认使用此 IP？(y/n，或输入其他 IP): " IP_CONFIRM
-    if [[ "$IP_CONFIRM" =~ ^[Yy]$ ]] || [ -z "$IP_CONFIRM" ]; then
-        DOMAIN="$SERVER_IP"
-    elif [[ "$IP_CONFIRM" =~ ^[Nn]$ ]]; then
-        read -p "请输入 IP 地址: " DOMAIN
-    else
-        DOMAIN="$IP_CONFIRM"
-    fi
-else
-    echo ""
-    read -p "请输入域名 (例如 newapi.example.com): " DOMAIN
+case "$MODE" in
+    domain) USE_DOMAIN=true ;;
+    http)   USE_HTTP_ONLY=true ;;
+esac
 
-    if [ -z "$DOMAIN" ]; then
-        log_error "域名不能为空。"
-        exit 1
-    fi
-
-    if ! [[ "$DOMAIN" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
-        log_error "域名格式不正确。"
-        exit 1
-    fi
-fi
-
-if [ -z "$DOMAIN" ]; then
-    log_error "域名/IP 不能为空。"
-    exit 1
-fi
+DOMAIN=$(get_domain_for_mode "$MODE")
+SERVER_IP=$(detect_server_ip)
 
 echo ""
 
 # 数据库类型选择
 echo -e "${CYAN}选择数据库类型:${NC}"
-echo "  1) PostgreSQL 15 (推荐，官方默认)"
+echo "  1) PostgreSQL 15 (推荐)"
 echo "  2) MySQL 8.2"
-read -p "请选择 [1-2, 默认 1]: " DB_CHOICE
+read -r -p "请选择 [1-2, 默认 1]: " DB_CHOICE
 
-case $DB_CHOICE in
+USE_POSTGRESQL=true
+DB_TYPE="PostgreSQL"
+DB_IMAGE="postgres:15"
+case "$DB_CHOICE" in
     2)
-        USE_MYSQL=true
+        USE_POSTGRESQL=false
         DB_TYPE="MySQL"
         DB_IMAGE="mysql:8.2"
-        DB_PORT=3306
-        ;;
-    *)
-        USE_POSTGRESQL=true
-        DB_TYPE="PostgreSQL"
-        DB_IMAGE="postgres:15"
-        DB_PORT=5432
         ;;
 esac
 
 log_info "已选择: $DB_TYPE"
 echo ""
 
-# 生成随机密码
-log_info "正在生成随机密码..."
-DB_PASSWORD=$(generate_password)
-REDIS_PASSWORD=$(generate_password)
-SESSION_SECRET=$(generate_session_secret)
-
+# 使用安全随机生成密码
+log_info "正在生成安全随机密码..."
+DB_PASSWORD=$(generate_password 32)
+REDIS_PASSWORD=$(generate_password 32)
+SESSION_SECRET=$(generate_session_secret 48)
 log_success "密码已生成（将保存到信息文件）"
 echo ""
 
-# DNS 配置提示 / IP 模式确认
-if [ -z "$SERVER_IP" ]; then
-    SERVER_IP=$(curl -s https://api.ipify.org 2>/dev/null || curl -s http://whatismyip.akamai.com 2>/dev/null || hostname -I | awk '{print $1}')
-fi
-
+# 确认
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 if [ "$USE_DOMAIN" = true ]; then
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${YELLOW}⚠️  重要提示：请确保域名已解析${NC}"
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}⚠️  请确保域名已解析:${NC}"
     echo -e "域名:   ${GREEN}$DOMAIN${NC}"
     echo -e "目标IP: ${GREEN}$SERVER_IP${NC}"
-    echo ""
-    echo -e "${YELLOW}[按回车键继续部署，Ctrl+C 取消]${NC}"
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+elif [ "$USE_HTTP_ONLY" = true ]; then
+    echo -e "${YELLOW}⚠️  HTTP 模式: 数据不加密${NC}"
+    echo -e "访问地址: ${GREEN}http://$DOMAIN${NC}"
 else
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${YELLOW}⚠️  IP 模式注意事项${NC}"
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}⚠️  IP 模式: 将使用自签名证书${NC}"
     echo -e "访问地址: ${GREEN}https://$DOMAIN${NC}"
-    echo ""
-    echo -e "${YELLOW}提示: 将使用自签名证书${NC}"
-    echo -e "${YELLOW}访问时浏览器会提示「不安全」，请点击「高级」→「继续访问」${NC}"
-    echo ""
-    echo -e "${YELLOW}[按回车键继续部署，Ctrl+C 取消]${NC}"
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 fi
-read
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+read -r -p "按回车键继续部署..." _
 
-# ==================== 创建目录结构 ====================
-
+# ==================== 创建目录 ====================
 log_step "[2/8] 创建目录结构..."
 
-mkdir -p "$DOCKER_ROOT"
-mkdir -p "$SERVICE_DIR"
-mkdir -p "$DATA_DIR/postgres"
-mkdir -p "$DATA_DIR/redis"
-mkdir -p "$LOGS_DIR"
-
+mkdir -p "$DOCKER_ROOT" "$SERVICE_DIR" "$DATA_DIR/postgres" "$DATA_DIR/redis" "$LOGS_DIR"
 log_success "目录创建完成"
 
 # ==================== 生成 docker-compose.yml ====================
-
 log_step "[3/8] 生成 Docker Compose 配置..."
 
 if [ "$USE_POSTGRESQL" = true ]; then
-    # PostgreSQL 配置
-    cat > "$SERVICE_DIR/docker-compose.yml" <<EOF
+    cat > "$SERVICE_DIR/docker-compose.yml" <<COMPOSE_EOF
 version: '3.8'
 
 services:
@@ -405,11 +272,9 @@ volumes:
     driver: local
   redis_data:
     driver: local
-EOF
-
+COMPOSE_EOF
 else
-    # MySQL 配置
-    cat > "$SERVICE_DIR/docker-compose.yml" <<EOF
+    cat > "$SERVICE_DIR/docker-compose.yml" <<COMPOSE_EOF
 version: '3.8'
 
 services:
@@ -489,14 +354,12 @@ volumes:
     driver: local
   redis_data:
     driver: local
-EOF
-
+COMPOSE_EOF
 fi
 
 log_success "Docker Compose 配置已生成"
 
-# ==================== 拉取 Docker 镜像 ====================
-
+# ==================== 拉取镜像 ====================
 log_step "[4/8] 拉取 Docker 镜像..."
 
 cd "$SERVICE_DIR"
@@ -510,7 +373,6 @@ else
 fi
 
 # ==================== 启动服务 ====================
-
 log_step "[5/8] 启动 Docker 服务..."
 
 log_info "正在启动容器..."
@@ -518,170 +380,48 @@ if $COMPOSE_CMD up -d; then
     log_success "容器启动成功"
 else
     log_error "容器启动失败"
-    log_info "查看日志: cd $SERVICE_DIR && $COMPOSE_CMD logs"
+    $COMPOSE_CMD logs 2>/dev/null || true
     exit 1
 fi
 
-# 等待服务启动
-log_info "等待服务初始化（约 30 秒）..."
-sleep 30
+# 使用健康检查轮询替代固定 sleep
+log_info "等待服务健康检查通过（最多 90 秒）..."
+wait_for_healthy "$COMPOSE_CMD" "$SERVICE_DIR" 90 5
 
-# 检查服务状态
-if $COMPOSE_CMD ps | grep -q "Up"; then
+if $COMPOSE_CMD ps 2>/dev/null | grep -q "Up"; then
     log_success "服务运行正常"
 else
     log_warning "服务可能未正常启动，请检查日志"
-    $COMPOSE_CMD ps
+    $COMPOSE_CMD ps 2>/dev/null || true
 fi
 
-# ==================== SSL 配置辅助函数 ====================
-
-# 获取主域名邮箱
-get_main_domain_email() {
-    local domain="$1"
-    local main_domain=$(echo "$domain" | awk -F. '{print $(NF-1)"."$NF}')
-    echo "admin@${main_domain}"
-}
-
-# 检查邮箱是否有效
-is_valid_ssl_email() {
-    local email="$1"
-    [ -z "$email" ] && return 1
-    echo "$email" | grep -qE "@(example\.com|localhost|test\.com)" && return 1
-    return 0
-}
-
-# 确保 acme.sh 配置正确
-ensure_acme_sh_config() {
-    local domain="$1"
-    local expected_email=$(get_main_domain_email "$domain")
-
-    if [ ! -f ~/.acme.sh/acme.sh ]; then
-        curl -s https://get.acme.sh | sh -s email="$expected_email" >/dev/null 2>&1
-        [ -f ~/.bashrc ] && source ~/.bashrc
-        return 0
-    fi
-
-    if [ -f ~/.acme.sh/account.conf ]; then
-        local current_email=$(grep "^ACCOUNT_EMAIL=" ~/.acme.sh/account.conf 2>/dev/null | cut -d"'" -f2)
-
-        if ! is_valid_ssl_email "$current_email"; then
-            sed -i "s/^ACCOUNT_EMAIL=.*/ACCOUNT_EMAIL='$expected_email'/g" ~/.acme.sh/account.conf
-            rm -rf ~/.acme.sh/ca/*/account.json 2>/dev/null || true
-        fi
-    fi
-}
-
-# ==================== SSL 证书配置 ====================
-
+# ==================== SSL 证书 ====================
 log_step "[6/8] 配置 SSL 证书..."
 
-# 创建证书目录
 DOMAIN_SSL_DIR="$SSL_DIR/$DOMAIN"
-mkdir -p "$DOMAIN_SSL_DIR"
 
 if [ "$USE_HTTP_ONLY" = true ]; then
-    # HTTP 模式：跳过 SSL 证书
-    log_info "HTTP 模式，跳过 SSL 证书配置"
     SSL_TYPE="无 (HTTP 模式)"
+    log_info "HTTP 模式，跳过 SSL 证书配置"
 elif [ "$USE_DOMAIN" = true ]; then
-    # 域名模式：申请 Let's Encrypt 证书
-    log_info "申请 Let's Encrypt ECC 证书..."
-
-    # 确保 acme.sh 配置正确
-    ensure_acme_sh_config "$DOMAIN"
-    [ -f ~/.bashrc ] && source ~/.bashrc
-
-    # 临时 Nginx 配置用于验证
-    cat > "$CONF_D/${DOMAIN}.conf" <<EOF
-server {
-    listen 80;
-    server_name $DOMAIN;
-    location /.well-known/acme-challenge/ {
-        root /var/www/acme;
-    }
-}
-EOF
-
-    mkdir -p /var/www/acme
-    chmod 755 /var/www/acme
-    systemctl reload nginx >/dev/null 2>&1
-
-    # 申请证书
-    ~/.acme.sh/acme.sh --issue --server letsencrypt -d "$DOMAIN" --webroot /var/www/acme --keylength ec-256
-
-    # 安装证书
-    ~/.acme.sh/acme.sh --install-cert -d "$DOMAIN" --ecc \
-        --key-file       "$DOMAIN_SSL_DIR/key.pem" \
-        --fullchain-file "$DOMAIN_SSL_DIR/fullchain.pem" \
-        --reloadcmd     "systemctl reload nginx" >/dev/null 2>&1
-
-    if [ $? -eq 0 ] && [ -f "$DOMAIN_SSL_DIR/fullchain.pem" ]; then
-        log_success "SSL 证书申请成功 (Let's Encrypt ECC)"
-        SSL_TYPE="Let's Encrypt (ECC-256)"
-    else
-        log_warning "SSL 申请失败，降级为自签名证书..."
-        openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-            -keyout "$DOMAIN_SSL_DIR/key.pem" \
-            -out "$DOMAIN_SSL_DIR/fullchain.pem" \
-            -subj "/CN=$DOMAIN" >/dev/null 2>&1
-        SSL_TYPE="自签名证书 (Let's Encrypt 申请失败)"
-    fi
+    SSL_TYPE=$(apply_ssl_certificate "$DOMAIN" "$DOMAIN_SSL_DIR" "domain")
 else
-    # IP 模式：生成自签名证书
-    log_info "生成自签名证书 (IP 模式)..."
-
-    # 生成支持 IP 的自签名证书
-    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-        -keyout "$DOMAIN_SSL_DIR/key.pem" \
-        -out "$DOMAIN_SSL_DIR/fullchain.pem" \
-        -subj "/CN=$DOMAIN" \
-        -addext "subjectAltName=IP:$DOMAIN" >/dev/null 2>&1
-
-    if [ $? -eq 0 ]; then
-        log_success "自签名证书生成成功"
-        SSL_TYPE="自签名证书 (IP 模式)"
-    else
-        # 旧版 OpenSSL 不支持 -addext，使用备用方法
-        openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-            -keyout "$DOMAIN_SSL_DIR/key.pem" \
-            -out "$DOMAIN_SSL_DIR/fullchain.pem" \
-            -subj "/CN=$DOMAIN" >/dev/null 2>&1
-        log_success "自签名证书生成成功 (兼容模式)"
-        SSL_TYPE="自签名证书 (IP 模式)"
-    fi
+    SSL_TYPE=$(apply_ssl_certificate "$DOMAIN" "$DOMAIN_SSL_DIR" "ip")
 fi
 
-# ==================== 配置 Nginx 反向代理 ====================
-
+# ==================== Nginx 配置 ====================
 log_step "[7/8] 配置 Nginx 反向代理..."
 
-# 检测 HTTP/3 支持
 NGINX_SUPPORTS_HTTP3=false
-if nginx -V 2>&1 | grep -q "http_v3_module"; then
+if detect_nginx_http3; then
     NGINX_SUPPORTS_HTTP3=true
     log_info "检测到 HTTP/3 支持"
 fi
 
-# 生成 Nginx 配置
-if [ "$USE_HTTP_ONLY" = true ]; then
-    # HTTP 模式：仅监听 80 端口
-    cat > "$CONF_D/${DOMAIN}.conf" <<'EOF_NGINX_HTTP'
-server {
-    listen 80;
+CONF_FILE="$CONF_D/${DOMAIN}.conf"
 
-    server_name DOMAIN_PLACEHOLDER;
-
-    # 大请求支持（图片上传等）
-    client_max_body_size 50m;
-
-    # 降低延迟
-    tcp_nodelay on;
-
-    # 日志
-    access_log /var/log/nginx/newapi_access.log;
-    error_log /var/log/nginx/newapi_error.log warn;
-
+# 公共 location 块
+read -r -d '' NGINX_LOCATION <<'NGX_LOC_EOF' || true
     #NEW-API-START
     location / {
         proxy_pass http://127.0.0.1:NEWAPI_PORT_PLACEHOLDER;
@@ -703,93 +443,67 @@ server {
         chunked_transfer_encoding on;
     }
     #NEW-API-END
+NGX_LOC_EOF
+
+if [ "$USE_HTTP_ONLY" = true ]; then
+    cat > "$CONF_FILE" <<NGX_HTTP
+server {
+    listen 80;
+    server_name $DOMAIN;
+    client_max_body_size 50m;
+    tcp_nodelay on;
+    access_log /var/log/nginx/newapi_access.log;
+    error_log /var/log/nginx/newapi_error.log warn;
+$NGINX_LOCATION
 }
-EOF_NGINX_HTTP
+NGX_HTTP
 elif [ "$NGINX_SUPPORTS_HTTP3" = true ]; then
-    # HTTP/3 配置
-    cat > "$CONF_D/${DOMAIN}.conf" <<'EOF_NGINX'
+    cat > "$CONF_FILE" <<NGX_H3
 server {
     listen 80;
     listen 443 ssl;
     listen 443 quic;
     http2 on;
-
-    server_name DOMAIN_PLACEHOLDER;
-
-    # 大请求支持（图片上传等）
+    server_name $DOMAIN;
     client_max_body_size 50m;
-
-    # 降低延迟
     tcp_nodelay on;
 
-    # ACME 验证路径
     location /.well-known/acme-challenge/ {
         root /var/www/acme;
     }
 
     #SSL-START
     #HTTP_TO_HTTPS_START
-    set $isRedcert 1;
-    if ($server_port != 443) {
-        set $isRedcert 2;
-    }
-    if ( $uri ~ /\.well-known/ ) {
-        set $isRedcert 1;
-    }
-    if ($isRedcert != 1) {
-        rewrite ^(.*)$ https://$host$1 permanent;
-    }
+    set \$isRedcert 1;
+    if (\$server_port != 443) { set \$isRedcert 2; }
+    if ( \$uri ~ /\.well-known/ ) { set \$isRedcert 1; }
+    if (\$isRedcert != 1) { rewrite ^(.*)\$ https://\$host\$1 permanent; }
     #HTTP_TO_HTTPS_END
-    ssl_certificate SSL_CERT_PLACEHOLDER;
-    ssl_certificate_key SSL_KEY_PLACEHOLDER;
+    ssl_certificate $DOMAIN_SSL_DIR/fullchain.pem;
+    ssl_certificate_key $DOMAIN_SSL_DIR/key.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers EECDH+CHACHA20:EECDH+CHACHA20-draft:EECDH+AES128:RSA+AES128:EECDH+AES256:RSA+AES256:EECDH+3DES:RSA+3DES:!MD5;
     ssl_prefer_server_ciphers on;
     ssl_session_tickets on;
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 10m;
-    add_header Strict-Transport-Security "max-age=31536000";
+    add_header Strict-Transport-Security "max-age=31536000" always;
     add_header Alt-Svc 'h3=":443"; ma=86400';
-    error_page 497 https://$host$request_uri;
+    error_page 497 https://\$host\$request_uri;
     #SSL-END
 
-    # 日志
     access_log /var/log/nginx/newapi_access.log;
     error_log /var/log/nginx/newapi_error.log warn;
-
-    #NEW-API-START
-    location / {
-        proxy_pass http://127.0.0.1:NEWAPI_PORT_PLACEHOLDER;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        # WebSocket 支持
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-
-        # SSE 流式响应支持
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_read_timeout 3600;
-        proxy_send_timeout 3600;
-        chunked_transfer_encoding on;
-    }
-    #NEW-API-END
+$NGINX_LOCATION
 }
-EOF_NGINX
+NGX_H3
 else
-    # HTTP/2 配置
-    cat > "$CONF_D/${DOMAIN}.conf" <<'EOF_NGINX_NO_H3'
+    cat > "$CONF_FILE" <<NGX_H2
 server {
     listen 80;
     listen 443 ssl;
     http2 on;
-
-    server_name DOMAIN_PLACEHOLDER;
-
+    server_name $DOMAIN;
     client_max_body_size 50m;
     tcp_nodelay on;
 
@@ -799,64 +513,35 @@ server {
 
     #SSL-START
     #HTTP_TO_HTTPS_START
-    set $isRedcert 1;
-    if ($server_port != 443) {
-        set $isRedcert 2;
-    }
-    if ( $uri ~ /\.well-known/ ) {
-        set $isRedcert 1;
-    }
-    if ($isRedcert != 1) {
-        rewrite ^(.*)$ https://$host$1 permanent;
-    }
+    set \$isRedcert 1;
+    if (\$server_port != 443) { set \$isRedcert 2; }
+    if ( \$uri ~ /\.well-known/ ) { set \$isRedcert 1; }
+    if (\$isRedcert != 1) { rewrite ^(.*)\$ https://\$host\$1 permanent; }
     #HTTP_TO_HTTPS_END
-    ssl_certificate SSL_CERT_PLACEHOLDER;
-    ssl_certificate_key SSL_KEY_PLACEHOLDER;
+    ssl_certificate $DOMAIN_SSL_DIR/fullchain.pem;
+    ssl_certificate_key $DOMAIN_SSL_DIR/key.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers EECDH+CHACHA20:EECDH+CHACHA20-draft:EECDH+AES128:RSA+AES128:EECDH+AES256:RSA+AES256:EECDH+3DES:RSA+3DES:!MD5;
     ssl_prefer_server_ciphers on;
     ssl_session_tickets on;
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 10m;
-    add_header Strict-Transport-Security "max-age=31536000";
-    error_page 497 https://$host$request_uri;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    error_page 497 https://\$host\$request_uri;
     #SSL-END
 
     access_log /var/log/nginx/newapi_access.log;
     error_log /var/log/nginx/newapi_error.log warn;
-
-    #NEW-API-START
-    location / {
-        proxy_pass http://127.0.0.1:NEWAPI_PORT_PLACEHOLDER;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_read_timeout 3600;
-        proxy_send_timeout 3600;
-        chunked_transfer_encoding on;
-    }
-    #NEW-API-END
+$NGINX_LOCATION
 }
-EOF_NGINX_NO_H3
+NGX_H2
 fi
 
 # 替换占位符
-sed -i "s|DOMAIN_PLACEHOLDER|$DOMAIN|g" "$CONF_D/${DOMAIN}.conf"
-sed -i "s|SSL_CERT_PLACEHOLDER|$DOMAIN_SSL_DIR/fullchain.pem|g" "$CONF_D/${DOMAIN}.conf"
-sed -i "s|SSL_KEY_PLACEHOLDER|$DOMAIN_SSL_DIR/key.pem|g" "$CONF_D/${DOMAIN}.conf"
-sed -i "s|NEWAPI_PORT_PLACEHOLDER|$NEWAPI_PORT|g" "$CONF_D/${DOMAIN}.conf"
+sed -i "s|NEWAPI_PORT_PLACEHOLDER|$NEWAPI_PORT|g" "$CONF_FILE"
 
-log_success "Nginx 配置已生成"
+log_success "Nginx 配置已生成: $CONF_FILE"
 
-# 测试并重载 Nginx
 if nginx -t >/dev/null 2>&1; then
     systemctl reload nginx
     log_success "Nginx 已重载"
@@ -865,44 +550,39 @@ else
     nginx -t
 fi
 
-# ==================== 生成配置信息文件 ====================
-
+# ==================== 生成信息文件 ====================
 log_step "[8/8] 生成配置信息文件..."
 
 INFO_FILE="$SERVICE_DIR/newapi_info.txt"
 
-cat > "$INFO_FILE" <<EOF
-================================================
-       New-API Docker 部署完成
-================================================
-访问模式: $( [ "$USE_HTTP_ONLY" = true ] && echo "HTTP 模式" || ( [ "$USE_DOMAIN" = true ] && echo "域名模式" || echo "IP 模式" ) )
-服务器 IP: $SERVER_IP
-$( [ "$USE_DOMAIN" = true ] && echo "域名:      $DOMAIN" || echo "访问地址:  $DOMAIN" )
+if [ "$USE_HTTP_ONLY" = true ]; then
+    ACCESS_URL="http://$DOMAIN"
+elif [ "$USE_DOMAIN" = true ]; then
+    ACCESS_URL="https://$DOMAIN"
+else
+    ACCESS_URL="https://$DOMAIN"
+fi
 
-[访问地址]
-$( [ "$USE_HTTP_ONLY" = true ] && echo "HTTP:      http://$DOMAIN" || echo "HTTPS:     https://$DOMAIN" )
-$( [ "$USE_HTTP_ONLY" = true ] && echo "管理界面:  http://$DOMAIN" || echo "管理界面:  https://$DOMAIN" )
+cat > "$INFO_FILE" <<INFO_EOF
+================================================
+       New-API Docker 部署完成 (v${COMMON_VERSION})
+================================================
+部署时间: $(date '+%Y-%m-%d %H:%M:%S')
+访问模式: $( [ "$USE_HTTP_ONLY" = true ] && echo "HTTP" || ( [ "$USE_DOMAIN" = true ] && echo "域名" || echo "IP" ) )
+访问地址: $ACCESS_URL
 
 ⚠️ 首次访问请在 Web 界面创建管理员账号
-$( [ "$USE_HTTP_ONLY" = true ] && echo "
-⚠️  HTTP 模式注意事项:
-- 数据传输不加密，API Key 可能泄露
-- 仅建议在内网或开发环境使用" )
-$( [ "$USE_HTTP_ONLY" = false ] && [ "$USE_DOMAIN" = false ] && echo "
-⚠️  IP 模式注意事项:
-- 浏览器会提示证书不安全，请点击「高级」→「继续访问」
-- API 客户端可能需要关闭 SSL 验证" )
+$( [ "$USE_HTTP_ONLY" = true ] && echo "⚠️  HTTP 模式: 数据不加密，仅限内网/开发" )
+$( [ "$USE_HTTP_ONLY" = false ] && [ "$USE_DOMAIN" = false ] && echo "⚠️  IP 模式: 浏览器会提示证书不安全" )
 
 [数据库信息]
 类型:      $DB_TYPE
 用户名:    newapi
 密码:      $DB_PASSWORD
 数据库名:  newapi
-端口:      $DB_PORT (仅容器内访问)
 
 [Redis 信息]
 密码:      $REDIS_PASSWORD
-端口:      6379 (仅容器内访问)
 
 [Session Secret]
 $SESSION_SECRET
@@ -911,96 +591,47 @@ $SESSION_SECRET
 
 [服务目录]
 Docker 目录:  $SERVICE_DIR
-数据目录:     $DATA_DIR
-日志目录:     $LOGS_DIR
 配置文件:     $SERVICE_DIR/docker-compose.yml
 
-[Docker 管理命令]
-进入服务目录:  cd $SERVICE_DIR
-查看服务状态:  $COMPOSE_CMD ps
-查看日志:      $COMPOSE_CMD logs -f new-api
-启动服务:      $COMPOSE_CMD start
-停止服务:      $COMPOSE_CMD stop
-重启服务:      $COMPOSE_CMD restart
-完全停止:      $COMPOSE_CMD down
+[Docker 管理]
+进入目录:  cd $SERVICE_DIR
+查看状态:  $COMPOSE_CMD ps
+查看日志:  $COMPOSE_CMD logs -f new-api
+重启服务:  $COMPOSE_CMD restart
 
-[升级命令]
-cd $SERVICE_DIR
-$COMPOSE_CMD pull
-$COMPOSE_CMD up -d
-
-[备份命令]
-备份数据库:
-EOF
-
-if [ "$USE_POSTGRESQL" = true ]; then
-    cat >> "$INFO_FILE" <<EOF
-  $COMPOSE_CMD exec postgres pg_dump -U newapi newapi > backup_\$(date +%Y%m%d).sql
-恢复数据库:
-  $COMPOSE_CMD exec -T postgres psql -U newapi newapi < backup_20260104.sql
-EOF
-else
-    cat >> "$INFO_FILE" <<EOF
-  $COMPOSE_CMD exec mysql mysqldump -u newapi -p$DB_PASSWORD newapi > backup_\$(date +%Y%m%d).sql
-恢复数据库:
-  $COMPOSE_CMD exec -T mysql mysql -u newapi -p$DB_PASSWORD newapi < backup_20260104.sql
-EOF
-fi
-
-cat >> "$INFO_FILE" <<EOF
+[升级]
+cd $SERVICE_DIR && $COMPOSE_CMD pull && $COMPOSE_CMD up -d
 
 [SSL 证书]
 类型:      $SSL_TYPE
 证书目录:  $DOMAIN_SSL_DIR/
-自动续期:  已启用（acme.sh cron 任务）
-
-[Nginx 配置]
-配置文件:  $CONF_D/${DOMAIN}.conf
-测试配置:  nginx -t
-重载配置:  systemctl reload nginx
-
-[Docker 网络]
-网络名称:  $DOCKER_NETWORK
-说明:      其他服务可通过此网络与 New-API 通信
 
 [官方文档]
 https://docs.newapi.pro/zh/docs
-
 ================================================
-EOF
+INFO_EOF
 
 chmod 600 "$INFO_FILE"
 log_success "配置信息已保存: $INFO_FILE"
 
-# ==================== 完成信息 ====================
-
+# ==================== 完成 ====================
 clear
-echo -e "${GREEN}"
 cat "$INFO_FILE"
-echo -e "${NC}"
-
-# 确定访问协议
-if [ "$USE_HTTP_ONLY" = true ]; then
-    ACCESS_URL="http://$DOMAIN"
-else
-    ACCESS_URL="https://$DOMAIN"
-fi
-
 echo ""
+
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}✅ New-API 部署完成！${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo -e "📋 配置信息文件: ${YELLOW}$INFO_FILE${NC}"
+echo -e "📋 信息文件: ${YELLOW}$INFO_FILE${NC}"
 echo -e "🌐 访问地址: ${GREEN}$ACCESS_URL${NC}"
 echo -e "📊 服务状态: ${CYAN}cd $SERVICE_DIR && $COMPOSE_CMD ps${NC}"
 echo ""
 if [ "$USE_HTTP_ONLY" = true ]; then
-    echo -e "${YELLOW}⚠️ HTTP 模式: 数据传输不加密，仅建议在内网或开发环境使用${NC}"
-    echo ""
+    echo -e "${YELLOW}⚠️ HTTP 模式: 数据不加密${NC}"
 elif [ "$USE_DOMAIN" = false ]; then
-    echo -e "${YELLOW}⚠️ IP 模式: 浏览器会提示证书不安全，请点击「高级」→「继续访问」${NC}"
-    echo ""
+    echo -e "${YELLOW}⚠️ IP 模式: 证书不受信任${NC}"
 fi
-echo -e "${YELLOW}⚠️ 下一步: 请访问 Web 界面创建管理员账号${NC}"
+echo -e "${YELLOW}⚠️ 下一步: 访问 Web 界面创建管理员账号${NC}"
 echo ""
+log_success "日志已保存: $DEPLOY_LOG_FILE"
