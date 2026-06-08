@@ -1,7 +1,7 @@
 # VPS 集群部署工具
 
-> **版本**: v3.0
-> **更新日期**: 2026-02-23
+> **版本**: v3.1
+> **更新日期**: 2026-06-05
 > **许可证**: MIT
 
 一套 VPS 集群自动化部署工具，用于构建 AI API 网关服务和代理节点。
@@ -34,10 +34,10 @@
 
 | 组件 | 最低配置 | 推荐配置 |
 |------|---------|---------|
-| **0.nginx** | 512MB 内存, 500MB 磁盘 | 1GB 内存, 2GB 磁盘 |
-| **1.v2ray** | 512MB 内存 | 1GB 内存 |
-| **2.cliproxyapi** | 256MB 内存 | 512MB 内存 |
-| **3.new-api** | 1GB 内存 (Docker) | 2GB 内存 |
+| **nginx** | 512MB 内存, 500MB 磁盘 | 1GB 内存, 2GB 磁盘 |
+| **cliproxyapi** | 256MB 内存 | 512MB 内存 |
+| **new-api** | 1GB 内存 (Docker) | 2GB 内存 |
+| **pi-coding-agent** | 500MB 磁盘 | 512MB 内存 |
 
 ### 前置条件
 
@@ -58,16 +58,19 @@ chmod +x deploy_cluster.sh
 ./deploy_cluster.sh
 ```
 
-脚本按顺序引导完成各组件安装：Nginx → Docker → V2Ray → CliproxyAPI → New-API。
+脚本按顺序引导完成各组件安装：Nginx → Docker → CliproxyAPI → New-API → Pi。
 
 ### 方式二：单独部署
 
 ```bash
 # 仅部署 Nginx
-cd 0.nginx && ./install_nginx.sh
+cd nginx && ./install_nginx.sh
 
 # 仅部署 New-API（会自动安装 Docker）
-cd 3.new-api && ./install_newapi_docker.sh
+cd new-api && ./install_newapi_docker.sh
+
+# 仅部署 Pi Coding Agent
+cd pi-coding-agent && ./install_pi.sh
 ```
 
 ---
@@ -82,34 +85,32 @@ vps_deployment_ai_tools/
 ├── docs/                          # 辅助文档
 │   └── cloudflare-dns-guide.md    # Cloudflare DNS 配置指南
 │
-├── 0.nginx/                       # Nginx 基础设施（必选）
+├── overview/                   # 项目总览与指引（文档）
+│
+├── nginx/                      # Nginx 基础设施（必选）
 │   ├── install_nginx.sh
-│   └── README.md
 │
-├── 01.docker/                     # Docker 容器环境（推荐）
+├── docker/                     # Docker 容器环境（推荐）
 │   ├── install_docker.sh
-│   └── README.md
 │
-├── 1.v2ray/                       # V2Ray 代理节点
-│   ├── install_v2ray.sh
-│   ├── install_web.sh
-│   └── README.md
-│
-├── 2.cliproxyapi/                 # CliproxyAPI 轻量代理
+├── cliproxyapi/                # CliproxyAPI 轻量代理
 │   ├── install_cliproxyapi_v2.sh
-│   └── README.md
 │
-├── 3.new-api/                     # New-API AI 网关
+├── new-api/                    # New-API AI 网关
 │   ├── install_newapi_docker.sh
 │   ├── upgrade_newapi_docker.sh
 │   ├── upgrade_newapi_alpha.sh
 │   ├── uninstall_newapi_docker.sh
-│   └── README.md
 │
-└── 8.service-monitor/             # 服务监控系统
-    ├── install_monitor.sh
-    ├── service_monitor.sh
-    ├── send_email.sh
+│   ├── install_monitor.sh
+│
+│
+└── pi-coding-agent/            # Pi 终端编程助手
+│   ├── install_pi.sh
+│
+└── science/                    # 网络工具
+    ├── setup.sh
+    ├── camouflage.sh
     └── README.md
 ```
 
@@ -117,7 +118,7 @@ vps_deployment_ai_tools/
 
 ## 组件说明
 
-### 0.nginx - Nginx 基础设施【必选】
+### nginx - Nginx 基础设施【必选】
 
 > **部署方式**: 官方仓库安装
 
@@ -127,12 +128,12 @@ vps_deployment_ai_tools/
 - 编译 Stream 模块，支持四层代理
 
 ```bash
-cd 0.nginx && ./install_nginx.sh
+cd nginx && ./install_nginx.sh
 ```
 
 ---
 
-### 01.docker - Docker 容器环境【推荐】
+### docker - Docker 容器环境【推荐】
 
 > **部署方式**: 自动安装
 
@@ -144,42 +145,28 @@ cd 0.nginx && ./install_nginx.sh
 New-API 等 Docker 服务的前置依赖。
 
 ```bash
-cd 01.docker && ./install_docker.sh
+cd docker && ./install_docker.sh
 ```
 
 ---
 
-### 1.v2ray - V2Ray 代理节点
+### cliproxyapi - CliproxyAPI 轻量代理
 
-> **依赖**: 0.nginx | **部署方式**: 二进制 + Systemd
-
-- WebSocket + TLS 传输，流量伪装为正常 HTTPS
-- 自动生成随机 UUID 和 WebSocket 路径
-- 内置静态伪装网站
-
-```bash
-cd 1.v2ray && ./install_v2ray.sh && ./install_web.sh
-```
-
----
-
-### 2.cliproxyapi - CliproxyAPI 轻量代理
-
-> **依赖**: 0.nginx | **部署方式**: 二进制 + Systemd
+> **依赖**: nginx | **部署方式**: 二进制 + Systemd
 
 - 轻量级 AI API 转发代理，资源占用极低（~50MB）
 - 支持 OpenAI、Claude、Gemini 等主流 AI 模型 API
 - 适合低配 VPS（内存 < 1GB）
 
 ```bash
-cd 2.cliproxyapi && ./install_cliproxyapi_v2.sh
+cd cliproxyapi && ./install_cliproxyapi_v2.sh
 ```
 
 ---
 
-### 3.new-api - New-API AI 网关
+### new-api - New-API AI 网关
 
-> **依赖**: 0.nginx, Docker | **部署方式**: Docker Compose
+> **依赖**: nginx, Docker | **部署方式**: Docker Compose
 
 - 新一代大模型网关与 AI 资产管理系统
 - 支持 OpenAI、Claude、Gemini、Azure 等多种模型聚合
@@ -187,21 +174,46 @@ cd 2.cliproxyapi && ./install_cliproxyapi_v2.sh
 - 技术栈：Docker Compose + PostgreSQL + Redis
 
 ```bash
-cd 3.new-api && ./install_newapi_docker.sh
+cd new-api && ./install_newapi_docker.sh
 ```
 
 ---
 
-### 8.service-monitor - 服务监控系统
 
 > **依赖**: 无 | **部署方式**: 纯 Bash
 
-- 多维度监控：Systemd 服务、Docker 容器、HTTP 端点、系统资源
-- 智能告警：状态变化检测，避免重复告警
-- 邮件通知：支持 Gmail、QQ、163 等邮箱
 
 ```bash
-cd 8.service-monitor && ./install_monitor.sh
+```
+
+---
+
+### pi-coding-agent - Pi 终端编程助手【新增】
+
+> **依赖**: Node.js (脚本自动安装) | **部署方式**: npm 全局安装
+
+- 极简终端编程助手，支持交互式和非交互式模式
+- 支持 Anthropic、OpenAI、Google Gemini、DeepSeek 等多种 AI 提供商
+- 可自定义扩展、技能包、提示词模板和主题
+- 无需本地 GPU，通过 API Key 连接远程 AI 服务
+
+```bash
+cd pi-coding-agent && ./install_pi.sh
+```
+
+---
+
+### science - 网络工具
+
+> **依赖**: 无 | **部署方式**: Xray 二进制直连
+
+- VLESS + XTLS-Vision + Reality 协议
+- 无需域名、无需 SSL 证书
+- 自动生成 X25519 密钥，完美伪造目标站点证书
+- 不包含在主部署脚本中，需手动执行
+
+```bash
+cd science && ./setup.sh
 ```
 
 ---
@@ -211,13 +223,19 @@ cd 8.service-monitor && ./install_monitor.sh
 ### 依赖关系
 
 ```
-0.nginx (必选)
+nginx (必选)
     ↓
-01.docker (推荐)
+docker (推荐)
     ↓
-┌───┴───┬───────────┬───────────┐
-↓       ↓           ↓           ↓
-1.v2ray 2.cliproxy  3.new-api   8.monitor
+┌───┴───┬───────────┐
+↓       ↓           ↓
+cliproxy  new-api
+
+pi-coding-agent (独立)
+    ↓ (通过 API 或 SSH 转发)
+cliproxyapi / new-api
+
+science (独立，手动部署，无需依赖)
 ```
 
 ### 访问模式
@@ -268,6 +286,15 @@ docker compose restart
 systemctl reload nginx
 ```
 
+### Pi Coding Agent
+
+```bash
+pi --version                    # 查看版本
+pi -p "任务描述"                  # 非交互式单次任务
+pi -c                           # 继续上次会话
+npm update -g @earendil-works/pi-coding-agent  # 更新 Pi
+```
+
 ---
 
 ## 常见问题
@@ -299,6 +326,12 @@ netstat -tlnp | grep :80
 
 对于低配 VPS（<1GB），建议使用 CliproxyAPI 而非 New-API。脚本会自动创建 Swap 空间。
 
+### 5. Pi 安装后无法使用
+
+- 确保 Node.js >= 18 已安装: `node --version`
+- 确保 API Key 已配置: `export ANTHROPIC_API_KEY=sk-ant-...`
+- 检查网络是否可达对应 AI 服务端点
+
 ---
 
 ## deploy_cluster.sh 说明
@@ -311,11 +344,12 @@ netstat -tlnp | grep :80
 # 脚本依次询问：
 # 1. 安装 Nginx（必选）
 # 2. 安装 Docker（推荐）
-# 3. 安装 V2Ray
+# 3. 科学上网工具
 # 4. 安装 CliproxyAPI
 # 5. 安装 New-API
+# 6. 安装 Pi Coding Agent
 ```
 
 ---
 
-**最后更新**: 2026-02-23
+**最后更新**: 2026-06-05

@@ -44,16 +44,16 @@
 
 ```
                     ┌─────────────────────────────────────────┐
-                    │      0.nginx部署（HTTP/3）               │
+                    │      nginx部署（HTTP/3）               │
                     │          【基础设施层 - 必须先部署】        │
                     └────────────────────┬────────────────────┘
                                          │
                     ┌────────────────────┼────────────────────┐
                     ▼                    ▼                    ▼
-              ┌─────────┐        ┌───────────┐        ┌──────────┐
-              │ V2Ray   │        │CliproxyAPI│        │ New-API  │
-              │ 节点    │        │  API转发   │        │ AI网关   │
-              └─────────┘        └───────────┘        └──────────┘
+              ┌───────────┐        ┌───────────┐        ┌──────────┐
+              │CliproxyAPI│        │ New-API   │        │ 其他服务  │
+              │  API转发   │        │ AI网关    │        │          │
+              └───────────┘        └───────────┘        └──────────┘
 ```
 
 所有后续服务都依赖本脚本提供的：
@@ -79,7 +79,7 @@
 ### 一键部署
 
 ```bash
-cd 0.nginx
+cd nginx
 chmod +x install_nginx.sh
 ./install_nginx.sh
 ```
@@ -364,10 +364,9 @@ Nginx 部署完成后，可以继续部署以下服务：
 
 | 序号 | 服务 | 用途 | 部署命令 |
 |------|------|------|---------|
-| 01 | Docker | 容器运行环境 | `cd ../01.docker && ./install_docker.sh` |
-| 1 | V2Ray 节点 | 代理服务 | `cd ../1.v2ray && ./install_v2ray.sh` |
-| 2 | CliproxyAPI | AI API 转发 | `cd ../2.cliproxyapi && ./install_cliproxyapi_v2.sh` |
-| 3 | New-API | AI 模型网关 | `cd ../3.new-api && ./install_newapi_docker.sh` |
+| Docker | 容器运行环境 | `cd ../docker && ./install_docker.sh` |
+| CliproxyAPI | AI API 转发 | `cd ../cliproxyapi && ./install_cliproxyapi_v2.sh` |
+| New-API | AI 模型网关 | `cd ../new-api && ./install_newapi_docker.sh` |
 
 **完整部署流程**: 请参考根目录的 `deploy_cluster.sh` 脚本进行引导式部署。
 

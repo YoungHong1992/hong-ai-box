@@ -43,7 +43,7 @@
 ```
 newapi.example.com  → A → VPS_IP  (New-API)
 api.example.com     → A → VPS_IP  (CliproxyAPI)
-proxy.example.com   → A → VPS_IP  (V2Ray)
+proxy.example.com   → A → VPS_IP  (网络工具)
 ```
 
 ---

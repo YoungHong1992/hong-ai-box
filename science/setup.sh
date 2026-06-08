@@ -72,9 +72,11 @@ echo -e "${CYAN}>>> [1/6] 下载安装 Xray-core...${NC}"
 
 if ! command -v xray &>/dev/null; then
     XRAY_VERSION=$(curl -sL --connect-timeout 10 \
+        -H "Accept: application/vnd.github+json" \
         "https://api.github.com/repos/XTLS/Xray-core/releases/latest" 2>/dev/null \
-        | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": "\(.*\)".*/\1/')
+        | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
     [ -z "$XRAY_VERSION" ] && XRAY_VERSION="v26.3.27"
+    echo "  版本: $XRAY_VERSION"
 
     ARCH=$(uname -m)
     case "$ARCH" in

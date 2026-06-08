@@ -12,10 +12,9 @@
 #   ./deploy_cluster.sh
 #
 # 依赖关系：
-#   0.nginx     → 必选（所有服务的基础）
-#   01.docker   → 推荐（Docker 容器服务的前置依赖）
-#   1-3 服务    → 可选（独立服务）
-#   8.监控      → 可选（独立服务）
+#   nginx     → 必选（所有服务的基础）
+#   docker    → 推荐（Docker 容器服务的前置依赖）
+#   其余服务  → 可选（独立服务）
 #
 ################################################################################
 
@@ -42,7 +41,7 @@ CLIPROXYAPI_INSTALLED=false
 # ==================== 辅助函数 ====================
 
 # 引入 Docker 安装脚本（提供 ensure_docker 函数）
-DOCKER_INSTALLER="$SCRIPT_DIR/01.docker/install_docker.sh"
+DOCKER_INSTALLER="$SCRIPT_DIR/docker/install_docker.sh"
 if [ -f "$DOCKER_INSTALLER" ]; then
     source "$DOCKER_INSTALLER"
 fi
@@ -120,7 +119,7 @@ install_nginx() {
 
     if confirm "是否开始安装 Nginx？" "y"; then
         echo ""
-        cd "$SCRIPT_DIR/0.nginx"
+        cd "$SCRIPT_DIR/nginx"
         chmod +x install_nginx.sh
         ./install_nginx.sh
 
@@ -170,58 +169,6 @@ install_docker() {
     wait_key
 }
 
-install_v2ray() {
-    print_section "安装 V2Ray 代理节点"
-
-    echo -e "${WHITE}功能说明:${NC}"
-    echo "  • V2Ray 是一款功能强大的代理工具，用于科学上网"
-    echo "  • 使用 WebSocket + TLS 传输，流量伪装为正常 HTTPS 请求"
-    echo "  • 自动生成随机 UUID 和 WebSocket 路径，增强安全性"
-    echo "  • 内置静态伪装网站，访问域名显示'系统维护'页面"
-    echo ""
-    echo -e "${CYAN}支持的访问模式:${NC}"
-    echo "  • 域名模式：自动申请 Let's Encrypt 证书（推荐）"
-    echo "  • IP 模式：使用自签名证书，无需域名"
-    echo "  • HTTP 模式：无 SSL 证书，仅限内网/开发环境"
-    echo ""
-    echo -e "${CYAN}适用场景:${NC}"
-    echo "  • 需要部署代理节点用于科学上网"
-    echo "  • 希望流量伪装为正常网站访问"
-    echo ""
-    echo -e "${YELLOW}前置要求:${NC}"
-    echo "  • 域名模式：需要一个已解析到本服务器的域名"
-    echo "  • IP 模式：无需域名，客户端需开启 AllowInsecure"
-    echo "  • HTTP 模式：无需域名或证书，但数据传输不加密"
-    echo "  • 确保 80 和 443 端口已开放"
-    echo ""
-
-    if confirm "是否安装 V2Ray 代理节点？" "n"; then
-        echo ""
-        cd "$SCRIPT_DIR/1.v2ray"
-        chmod +x install_v2ray.sh install_web.sh
-
-        echo -e "${CYAN}>>> 正在安装 V2Ray 核心...${NC}"
-        ./install_v2ray.sh
-
-        if [ $? -eq 0 ]; then
-            echo ""
-            echo -e "${CYAN}>>> 正在部署伪装网站...${NC}"
-            ./install_web.sh
-
-            INSTALLED_SERVICES+=("V2Ray 代理节点")
-            echo ""
-            echo -e "${GREEN}✓ V2Ray 安装成功！${NC}"
-            echo -e "${DIM}连接信息已保存到: v2ray_node_info.txt${NC}"
-        else
-            echo -e "${YELLOW}⚠ V2Ray 安装未完成${NC}"
-        fi
-    else
-        echo -e "${DIM}跳过 V2Ray 安装${NC}"
-    fi
-
-    wait_key
-}
-
 install_cliproxyapi() {
     print_section "安装 CliproxyAPI (AI API 转发服务)"
 
@@ -255,7 +202,7 @@ install_cliproxyapi() {
 
     if confirm "是否安装 CliproxyAPI？" "n"; then
         echo ""
-        cd "$SCRIPT_DIR/2.cliproxyapi"
+        cd "$SCRIPT_DIR/cliproxyapi"
         chmod +x install_cliproxyapi_v2.sh
         ./install_cliproxyapi_v2.sh
 
@@ -321,7 +268,7 @@ install_newapi() {
             INSTALLED_SERVICES+=("Docker")
         fi
 
-        cd "$SCRIPT_DIR/3.new-api"
+        cd "$SCRIPT_DIR/new-api"
         chmod +x install_newapi_docker.sh
         ./install_newapi_docker.sh
 
@@ -336,6 +283,36 @@ install_newapi() {
         fi
     else
         echo -e "${DIM}跳过 New-API 安装${NC}"
+    fi
+
+    wait_key
+}
+
+install_pi() {
+    print_section "安装 Pi 终端编程助手"
+
+    echo -e "${WHITE}功能说明:${NC}"
+    echo "  • Pi 是一款极简终端 AI 编程助手"
+    echo "  • 支持 Anthropic、OpenAI、Gemini、DeepSeek 等 AI 提供商"
+    echo "  • 通过 API Key 连接远程 AI 服务，无需本地 GPU"
+    echo ""
+
+    if confirm "是否安装 Pi 编程助手？" "n"; then
+        echo ""
+        cd "$SCRIPT_DIR/pi-coding-agent"
+        chmod +x install_pi.sh
+        ./install_pi.sh
+
+        if [ $? -eq 0 ]; then
+            INSTALLED_SERVICES+=("Pi 编程助手")
+            echo ""
+            echo -e "${GREEN}✓ Pi 安装成功！${NC}"
+            echo -e "${DIM}使用方式: pi -p \"你的问题\"${NC}"
+        else
+            echo -e "${YELLOW}⚠ Pi 安装未完成${NC}"
+        fi
+    else
+        echo -e "${DIM}跳过 Pi 安装${NC}"
     fi
 
     wait_key
@@ -382,6 +359,10 @@ print_summary() {
         echo ""
     fi
 
+    echo "  Pi 编程助手:"
+    echo "    pi --help"
+    echo "    pi -p \"你的问题\""
+
     print_divider
     echo ""
     echo -e "${CYAN}感谢使用 VPS 集群部署工具！${NC}"
@@ -400,16 +381,15 @@ main() {
     echo "本工具将引导您按顺序部署 VPS 集群的各个组件。"
     echo ""
     echo -e "${CYAN}可用组件:${NC}"
-    echo "  0. Nginx (HTTP/3)          - 基础设施【必选】"
-    echo "  01. Docker 容器环境        - 容器服务前置依赖【推荐】"
-    echo "  1. V2Ray 代理节点          - 科学上网"
-    echo "  2. CliproxyAPI            - 轻量 AI API 转发"
-    echo "  3. New-API                - AI 模型网关（完整功能）"
-    echo "  8. 服务监控               - 自动化监控告警"
+    echo "  1. Nginx (HTTP/3)          - 基础设施【必选】"
+    echo "  2. Docker 容器环境        - 容器服务前置依赖【推荐】"
+    echo "  3. CliproxyAPI            - 轻量 AI API 转发"
+    echo "  4. New-API                - AI 模型网关（完整功能）"
+    echo "  5. Pi 编程助手            - 终端 AI 编程工具"
     echo ""
     echo -e "${YELLOW}依赖关系:${NC}"
-    echo "  • 0.Nginx 是所有服务的基础，必须首先安装"
-    echo "  • 01.Docker 是 New-API 等容器服务的前置依赖"
+    echo "  • Nginx 是所有服务的基础，必须首先安装"
+    echo "  • Docker 是 New-API 等容器服务的前置依赖"
     echo ""
 
     if ! confirm "是否开始部署？" "y"; then
@@ -429,15 +409,15 @@ main() {
     echo -e "${WHITE}接下来，请选择要安装的可选服务。${NC}"
     echo ""
     echo "您可以选择安装以下服务（按顺序提示）:"
-    echo "  • V2Ray 代理节点（科学上网）"
     echo "  • CliproxyAPI（轻量 AI API 转发）"
     echo "  • New-API（完整 AI 网关）"
+echo "  • Pi 编程助手（终端 AI 工具）"
     echo ""
     wait_key
 
-    install_v2ray
     install_cliproxyapi
     install_newapi
+    install_pi
 
     # 显示总结
     print_summary

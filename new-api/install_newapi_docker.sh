@@ -113,7 +113,7 @@ if ! command -v docker &> /dev/null; then
 
     # 定位 Docker 安装脚本
     SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-    DOCKER_INSTALLER="$SCRIPT_DIR/../01.docker/install_docker.sh"
+    DOCKER_INSTALLER="$SCRIPT_DIR/../docker/install_docker.sh"
 
     if [ -f "$DOCKER_INSTALLER" ]; then
         source "$DOCKER_INSTALLER"
