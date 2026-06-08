@@ -107,7 +107,9 @@ if [ "$IS_UPGRADE" = true ]; then
     log_info "检测到已安装版本: v${CURRENT_VERSION}"
     log_warning "即将进入升级模式（保留所有配置）"
     echo ""
-    read -r -p "按回车键继续，或 Ctrl+C 取消..." _
+    if ! is_noninteractive; then
+        read -r -p "按回车键继续，或 Ctrl+C 取消..." _
+    fi
 else
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${CYAN}   CliproxyAPI 安装程序 v${COMMON_VERSION}${NC}"
@@ -123,37 +125,48 @@ API_KEY_1=""
 API_KEY_2=""
 
 if [ "$IS_UPGRADE" = false ]; then
-    MODE=$(select_access_mode)
-
-    case "$MODE" in
-        domain) USE_DOMAIN=true; USE_HTTP_ONLY=false ;;
-        ip)     USE_DOMAIN=false; USE_HTTP_ONLY=false ;;
-        http)   USE_DOMAIN=false; USE_HTTP_ONLY=true ;;
-    esac
-
-    DOMAIN=$(get_domain_for_mode "$MODE")
-
-    echo ""
-    read -r -p "请输入管理面板密码: " ADMIN_SECRET
-    if [ -z "$ADMIN_SECRET" ]; then
-        log_error "管理面板密码不能为空。"
-        exit 1
-    fi
-
-    echo ""
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    if [ "$USE_HTTP_ONLY" = true ]; then
-        echo -e "${YELLOW}⚠️  HTTP 模式：无 SSL 加密${NC}"
-    elif [ "$USE_DOMAIN" = true ]; then
-        echo -e "${YELLOW}⚠️  重要提示：请确保域名已解析${NC}"
+    if is_noninteractive; then
+        MODE="${HONGAIBOX_ACCESS_MODE:-domain}"
+        DOMAIN="${HONGAIBOX_DOMAIN:-$(detect_server_ip)}"
+        ADMIN_SECRET="${HONGAIBOX_ADMIN_PASSWORD:-$(generate_password 32)}"
+        case "$MODE" in
+            domain) USE_DOMAIN=true; USE_HTTP_ONLY=false ;;
+            ip)     USE_DOMAIN=false; USE_HTTP_ONLY=false ;;
+            http)   USE_DOMAIN=false; USE_HTTP_ONLY=true ;;
+        esac
     else
-        echo -e "${YELLOW}⚠️  IP 模式：将使用自签名证书${NC}"
+        MODE=$(select_access_mode)
+
+        case "$MODE" in
+            domain) USE_DOMAIN=true; USE_HTTP_ONLY=false ;;
+            ip)     USE_DOMAIN=false; USE_HTTP_ONLY=false ;;
+            http)   USE_DOMAIN=false; USE_HTTP_ONLY=true ;;
+        esac
+
+        DOMAIN=$(get_domain_for_mode "$MODE")
+
+        echo ""
+        read -r -p "请输入管理面板密码: " ADMIN_SECRET
+        if [ -z "$ADMIN_SECRET" ]; then
+            log_error "管理面板密码不能为空。"
+            exit 1
+        fi
+
+        echo ""
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        if [ "$USE_HTTP_ONLY" = true ]; then
+            echo -e "${YELLOW}⚠️  HTTP 模式：无 SSL 加密${NC}"
+        elif [ "$USE_DOMAIN" = true ]; then
+            echo -e "${YELLOW}⚠️  重要提示：请确保域名已解析${NC}"
+        else
+            echo -e "${YELLOW}⚠️  IP 模式：将使用自签名证书${NC}"
+        fi
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "访问地址: ${GREEN}$DOMAIN${NC}"
+        echo -e "服务器IP: ${GREEN}$(detect_server_ip)${NC}"
+        echo ""
+        read -r -p "按回车键继续安装，Ctrl+C 取消..." _
     fi
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "访问地址: ${GREEN}$DOMAIN${NC}"
-    echo -e "服务器IP: ${GREEN}$(detect_server_ip)${NC}"
-    echo ""
-    read -r -p "按回车键继续安装，Ctrl+C 取消..." _
 else
     # 升级模式：从现有配置读取域名
     DOMAIN=""

@@ -42,6 +42,9 @@ EOF
 
 # ==================== 参数解析 ====================
 NO_PROMPT=false
+if [ "${HONGAIBOX_UNATTENDED:-}" = "1" ]; then
+    NO_PROMPT=true
+fi
 for arg in "$@"; do
     case "$arg" in
         -h|--help) show_help ;;

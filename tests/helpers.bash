@@ -13,7 +13,7 @@
 
 load_lib() {
     local lib_dir
-    lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)"
+    lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts/lib" && pwd)"
     for mod in "$@"; do
         # shellcheck disable=SC1090
         source "${lib_dir}/${mod}.sh"

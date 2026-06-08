@@ -62,8 +62,9 @@ for arg in "$@"; do
 done
 
 # ==================== 全局配置 ====================
-DEST_SNI="${DEST_SNI:-www.microsoft.com}"
-REALITY_PORT="${REALITY_PORT:-8443}"
+# HONGAIBOX_* variables take precedence over legacy DEST_SNI/REALITY_PORT.
+DEST_SNI="${HONGAIBOX_DEST_SNI:-${DEST_SNI:-www.microsoft.com}}"
+REALITY_PORT="${HONGAIBOX_REALITY_PORT:-${REALITY_PORT:-8443}}"
 XRAY_DIR="/usr/local/etc/xray"
 INFO_FILE="${INFO_FILE:-$(dirname "$(readlink -f "$0")")/reality_node_info.txt}"
 

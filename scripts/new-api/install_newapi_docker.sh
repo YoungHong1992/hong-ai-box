@@ -116,9 +116,11 @@ echo ""
 
 if [ -f "$SERVICE_DIR/docker-compose.yml" ]; then
     log_warning "检测到已安装 New-API"
-    if ! confirm "是否覆盖安装？"; then
-        log_info "安装已取消。"
-        exit 0
+    if ! is_noninteractive; then
+        if ! confirm "是否覆盖安装？"; then
+            log_info "安装已取消。"
+            exit 0
+        fi
     fi
 fi
 
@@ -126,36 +128,62 @@ fi
 log_step "[1/8] 请输入配置信息"
 echo ""
 
-MODE=$(select_access_mode)
+if is_noninteractive; then
+    MODE="${HONGAIBOX_ACCESS_MODE:-domain}"
+    DOMAIN="${HONGAIBOX_DOMAIN:-$(detect_server_ip)}"
+    DB_CHOICE="${HONGAIBOX_DB_TYPE:-postgresql}"
+    case "$DB_CHOICE" in
+        mysql|MySQL) DB_CHOICE=2 ;;
+        *)           DB_CHOICE=1 ;;
+    esac
+    USE_DOMAIN=false
+    USE_HTTP_ONLY=false
+    case "$MODE" in
+        domain) USE_DOMAIN=true ;;
+        http)   USE_HTTP_ONLY=true ;;
+    esac
+else
+    MODE=$(select_access_mode)
 
-USE_DOMAIN=false
-USE_HTTP_ONLY=false
-case "$MODE" in
-    domain) USE_DOMAIN=true ;;
-    http)   USE_HTTP_ONLY=true ;;
-esac
+    USE_DOMAIN=false
+    USE_HTTP_ONLY=false
+    case "$MODE" in
+        domain) USE_DOMAIN=true ;;
+        http)   USE_HTTP_ONLY=true ;;
+    esac
 
-DOMAIN=$(get_domain_for_mode "$MODE")
+    DOMAIN=$(get_domain_for_mode "$MODE")
+fi
+
 SERVER_IP=$(detect_server_ip)
 
 echo ""
 
 # 数据库类型选择
-echo -e "${CYAN}选择数据库类型:${NC}"
-echo "  1) PostgreSQL 15 (推荐)"
-echo "  2) MySQL 8.2"
-read -r -p "请选择 [1-2, 默认 1]: " DB_CHOICE
-
 USE_POSTGRESQL=true
 DB_TYPE="PostgreSQL"
 DB_IMAGE="postgres:15"
-case "$DB_CHOICE" in
-    2)
-        USE_POSTGRESQL=false
-        DB_TYPE="MySQL"
-        DB_IMAGE="mysql:8.2"
-        ;;
-esac
+if is_noninteractive; then
+    case "$DB_CHOICE" in
+        2)
+            USE_POSTGRESQL=false
+            DB_TYPE="MySQL"
+            DB_IMAGE="mysql:8.2"
+            ;;
+    esac
+else
+    echo -e "${CYAN}选择数据库类型:${NC}"
+    echo "  1) PostgreSQL 15 (推荐)"
+    echo "  2) MySQL 8.2"
+    read -r -p "请选择 [1-2, 默认 1]: " DB_CHOICE
+    case "$DB_CHOICE" in
+        2)
+            USE_POSTGRESQL=false
+            DB_TYPE="MySQL"
+            DB_IMAGE="mysql:8.2"
+            ;;
+    esac
+fi
 
 log_info "已选择: $DB_TYPE"
 echo ""
@@ -183,7 +211,9 @@ else
 fi
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-read -r -p "按回车键继续部署..." _
+if ! is_noninteractive; then
+    read -r -p "按回车键继续部署..." _
+fi
 
 # ==================== 创建目录 ====================
 log_step "[2/8] 创建目录结构..."

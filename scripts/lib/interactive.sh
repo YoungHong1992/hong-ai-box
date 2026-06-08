@@ -2,6 +2,12 @@
 # shellcheck shell=bash
 ################################################################################
 # 交互辅助函数
+
+# is_noninteractive returns true when HONGAIBOX_UNATTENDED is set.
+# Install scripts should skip all read/confirm prompts when this is active.
+is_noninteractive() {
+    [ "${HONGAIBOX_UNATTENDED:-}" = "1" ]
+}
 ################################################################################
 
 confirm() {
