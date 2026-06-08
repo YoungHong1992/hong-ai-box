@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 
 setup() {
-    load ../lib/security.sh
+    load helpers
+    load_lib security
 }
 
 @test "generate_password produces correct length" {

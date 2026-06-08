@@ -1,11 +1,8 @@
 #!/usr/bin/env bats
 
 setup() {
-    # Mock log functions to satisfy network.sh dependencies
-    log_error() { echo "[ERROR] $*" >&2; }
-    log_info()  { echo "[INFO] $*"; }
-    log_debug() { :; }
-    load ../lib/network.sh
+    load helpers
+    load_lib network
 }
 
 @test "check_port_available returns 0 for high ephemeral port" {

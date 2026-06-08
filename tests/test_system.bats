@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 
 setup() {
-    load ../lib/system.sh
+    load helpers
+    load_lib system
 }
 
 @test "detect_os returns non-empty" {

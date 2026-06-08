@@ -1,10 +1,8 @@
 #!/usr/bin/env bats
 
 setup() {
-    log_error()   { echo "[ERROR] $*" >&2; }
-    log_warning() { echo "[WARNING] $*" >&2; }
-    load ../lib/interactive.sh
-    load ../lib/system.sh
+    load helpers
+    load_lib system interactive
 }
 
 @test "validate_domain accepts valid domain" {

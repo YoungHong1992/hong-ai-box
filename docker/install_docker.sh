@@ -31,18 +31,15 @@ if [ -f "$LIBSH" ]; then
     # shellcheck source=lib/common.sh
     source "$LIBSH"
 else
-    # 退化：库不存在时提供基本输出
-    _docker_log_info()    { echo -e "\033[0;34m[INFO]\033[0m $1"; }
-    _docker_log_success() { echo -e "\033[0;32m[SUCCESS]\033[0m $1"; }
-    _docker_log_warning() { echo -e "\033[0;33m[WARNING]\033[0m $1"; }
-    _docker_log_error()   { echo -e "\033[0;31m[ERROR]\033[0m $1"; }
-    _docker_log_step()    { echo -e "\033[0;36m[STEP]\033[0m $1"; }
+    echo -e "\033[0;31m[ERROR] 缺少公共库: $LIBSH\033[0m" >&2
+    echo -e "请确保 lib/common.sh 存在（完整仓库克隆）。" >&2
+    exit 1
 fi
 
 # ==================== 修复 apt 源 ====================
 
 fix_apt_sources() {
-    _docker_log_info "检查并修复 apt 源配置..."
+    log_info "检查并修复 apt 源配置..."
 
     # 检测发行版
     if [ -f /etc/os-release ]; then
@@ -50,7 +47,7 @@ fix_apt_sources() {
         local distro="$ID"
         local version="${VERSION_CODENAME:-}"
     else
-        _docker_log_warning "无法检测系统发行版，跳过源修复"
+        log_warning "无法检测系统发行版，跳过源修复"
         return 0
     fi
 
@@ -66,7 +63,7 @@ fix_apt_sources() {
         # 修复 bullseye (Debian 11) 的安全源问题
         if [ "$version" = "bullseye" ]; then
             if grep -q "security.debian.org bullseye/updates" /etc/apt/sources.list 2>/dev/null; then
-                _docker_log_warning "修复 Debian 11 安全源路径..."
+                log_warning "修复 Debian 11 安全源路径..."
                 sed -i 's|security.debian.org bullseye/updates|security.debian.org/debian-security bullseye-security|g' /etc/apt/sources.list
             fi
             if grep -q "security.debian.org/debian bullseye/updates" /etc/apt/sources.list 2>/dev/null; then
@@ -77,7 +74,7 @@ fix_apt_sources() {
         # 修复 buster (Debian 10) - 已移至 archive
         if [ "$version" = "buster" ]; then
             if grep -q "deb.debian.org/debian buster" /etc/apt/sources.list 2>/dev/null; then
-                _docker_log_warning "Debian 10 已结束支持，切换到 archive 源..."
+                log_warning "Debian 10 已结束支持，切换到 archive 源..."
                 sed -i 's|deb.debian.org/debian|archive.debian.org/debian|g' /etc/apt/sources.list
                 sed -i 's|security.debian.org/debian-security|archive.debian.org/debian-security|g' /etc/apt/sources.list
                 sed -i '/buster-updates/d' /etc/apt/sources.list
@@ -91,10 +88,10 @@ fix_apt_sources() {
     rm -rf /var/lib/apt/lists/*
 
     if apt-get update -qq 2>/dev/null; then
-        _docker_log_success "apt 源配置正常"
+        log_success "apt 源配置正常"
         return 0
     else
-        _docker_log_warning "apt 更新时有警告，尝试继续..."
+        log_warning "apt 更新时有警告，尝试继续..."
         apt-get update --allow-releaseinfo-change 2>/dev/null || true
         return 0
     fi
@@ -107,17 +104,17 @@ ensure_docker() {
     if command -v docker &> /dev/null; then
         local docker_version
         docker_version=$(docker --version 2>/dev/null | grep -oP 'Docker version \K[0-9]+\.[0-9]+' || echo "unknown")
-        _docker_log_success "Docker 已安装 (版本: $docker_version)"
+        log_success "Docker 已安装 (版本: $docker_version)"
 
         if ! systemctl is-active --quiet docker 2>/dev/null; then
-            _docker_log_warning "Docker 服务未运行，正在启动..."
+            log_warning "Docker 服务未运行，正在启动..."
             systemctl start docker
             systemctl enable docker
         fi
         return 0
     fi
 
-    _docker_log_step "安装 Docker..."
+    log_step "安装 Docker..."
     echo ""
 
     # 先修复 apt 源
@@ -135,10 +132,10 @@ ensure_docker() {
             rm -f /tmp/get-docker.sh
             systemctl start docker
             systemctl enable docker
-            _docker_log_success "Docker 安装成功"
+            log_success "Docker 安装成功"
             return 0
         else
-            _docker_log_warning "官方脚本安装失败，尝试手动安装..."
+            log_warning "官方脚本安装失败，尝试手动安装..."
             rm -f /tmp/get-docker.sh
         fi
     fi
@@ -171,7 +168,7 @@ ensure_docker() {
             yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
             ;;
         *)
-            _docker_log_error "不支持的发行版: $distro"
+            log_error "不支持的发行版: $distro"
             echo -e "${YELLOW}请手动安装 Docker: https://docs.docker.com/engine/install/${NC}"
             return 1
             ;;
@@ -183,11 +180,11 @@ ensure_docker() {
 
     # 验证安装
     if command -v docker &> /dev/null; then
-        _docker_log_success "Docker 安装成功"
+        log_success "Docker 安装成功"
         docker --version
         return 0
     else
-        _docker_log_error "Docker 安装失败"
+        log_error "Docker 安装失败"
         echo -e "${YELLOW}请手动安装 Docker: https://docs.docker.com/engine/install/${NC}"
         return 1
     fi
