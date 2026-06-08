@@ -46,6 +46,12 @@
 - **域名（可选）**: 申请 SSL 证书需要已解析的域名（[Cloudflare DNS 配置指南](docs/cloudflare-dns-guide.md)）；也支持 IP 模式（自签名证书）和 HTTP 模式
 - **端口开放**: 80 (HTTP), 443 (HTTPS)
 
+### 推荐工具
+
+| 工具 | 用途 | 安装 |
+|------|------|------|
+| **GitHub CLI (`gh`)** | 查看 CI 状态、管理 PR、发布 Release | [官方安装指南](https://github.com/cli/cli#installation) |
+
 ---
 
 ## 快速开始
@@ -308,6 +314,16 @@ pi --version                    # 查看版本
 pi -p "任务描述"                  # 非交互式单次任务
 pi -c                           # 继续上次会话
 npm update -g @earendil-works/pi-coding-agent  # 更新 Pi
+```
+
+### GitHub CLI (gh)
+
+```bash
+gh auth login                   # 登录 GitHub
+gh pr list                      # 查看待合并的 PR
+gh run list                     # 查看最近 CI 运行状态
+gh run view <ID> --log-failed   # 查看失败的 CI 日志
+gh release list                 # 查看 Release 列表
 ```
 
 ---
