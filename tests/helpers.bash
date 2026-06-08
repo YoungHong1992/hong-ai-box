@@ -21,17 +21,16 @@ load_lib() {
 }
 
 # ─── Mock 颜色变量（在 lib 加载后覆盖，避免 \033 在 TAP 输出中产生乱码）──
-
-RED=""
-GREEN=""
-YELLOW=""
-BLUE=""
-MAGENTA=""
-CYAN=""
-WHITE=""
-NC=""
-BOLD=""
-DIM=""
+export RED=""
+export GREEN=""
+export YELLOW=""
+export BLUE=""
+export MAGENTA=""
+export CYAN=""
+export WHITE=""
+export NC=""
+export BOLD=""
+export DIM=""
 
 # 版本号（部分被测函数引用）
 COMMON_VERSION="${COMMON_VERSION:-3.5.0}"
