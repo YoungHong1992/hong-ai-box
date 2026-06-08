@@ -33,7 +33,7 @@
 
 ```
 ┌──────────────────────────────────────────┐
-│         01.docker（容器运行环境）          │
+│         docker（容器运行环境）          │
 │       【Docker 服务的前置依赖 - 推荐安装】  │
 └────────────────────┬─────────────────────┘
                      │
@@ -46,7 +46,7 @@
 ```
 
 以下服务依赖 Docker 环境：
-- **3.new-api**: Docker Compose 部署（PostgreSQL + Redis + New-API）
+- **new-api**: Docker Compose 部署（PostgreSQL + Redis + New-API）
 
 ---
 
@@ -64,7 +64,7 @@
 ### 一键安装
 
 ```bash
-cd 01.docker
+cd docker
 chmod +x install_docker.sh
 ./install_docker.sh
 ```
@@ -122,7 +122,7 @@ Docker 已安装？
 ```bash
 # 在其他安装脚本中
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DOCKER_INSTALLER="$SCRIPT_DIR/../01.docker/install_docker.sh"
+DOCKER_INSTALLER="$SCRIPT_DIR/../docker/install_docker.sh"
 
 source "$DOCKER_INSTALLER"
 ensure_docker
