@@ -16,6 +16,7 @@ set -euo pipefail
 
 # ==================== 加载公共库 ====================
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/../lib/common.sh"
 
 # ==================== 帮助信息 ====================
@@ -85,9 +86,9 @@ log_step "Step 2/2: 安装 Pi Coding Agent..."
 if command -v pi &>/dev/null; then
     PI_VERSION=$(pi --version 2>/dev/null || echo "unknown")
     log_warning "Pi 已安装 (v${PI_VERSION})，升级到最新版..."
-    npm install -g @earendil-works/pi-coding-agent@latest
+    npm install -g --ignore-scripts @earendil-works/pi-coding-agent@latest
 else
-    npm install -g @earendil-works/pi-coding-agent
+    npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 fi
 
 echo ""

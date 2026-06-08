@@ -25,6 +25,7 @@ set -euo pipefail
 
 # ==================== 加载公共库 ====================
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
 
 # ==================== 帮助信息 ====================
@@ -71,6 +72,7 @@ done
 
 # ==================== 全局状态 ====================
 INSTALLED_SERVICES=()
+# shellcheck disable=SC2034
 NGINX_INSTALLED=false
 DOCKER_INSTALLED=false
 NEWAPI_INSTALLED=false
@@ -79,6 +81,7 @@ CLIPROXYAPI_INSTALLED=false
 # ==================== 引入 Docker 安装函数 ====================
 DOCKER_INSTALLER="$SCRIPT_DIR/docker/install_docker.sh"
 if [ -f "$DOCKER_INSTALLER" ]; then
+    # shellcheck source=docker/install_docker.sh
     source "$DOCKER_INSTALLER"
 else
     log_warning "未找到 Docker 安装脚本，Docker 相关功能将不可用。"
@@ -104,7 +107,7 @@ install_nginx() {
         chmod +x install_nginx.sh
         ./install_nginx.sh
 
-        if [ $? -eq 0 ]; then
+        if ./install_nginx.sh; then
             NGINX_INSTALLED=true
             INSTALLED_SERVICES+=("Nginx (HTTP/3)")
             log_success "Nginx 安装成功！"
@@ -162,9 +165,7 @@ install_cliproxyapi() {
         echo ""
         cd "$SCRIPT_DIR/cliproxyapi"
         chmod +x install_cliproxyapi_v2.sh
-        ./install_cliproxyapi_v2.sh
-
-        if [ $? -eq 0 ]; then
+        if ./install_cliproxyapi_v2.sh; then
             CLIPROXYAPI_INSTALLED=true
             INSTALLED_SERVICES+=("CliproxyAPI")
             log_success "CliproxyAPI 安装成功！"
@@ -209,9 +210,7 @@ install_newapi() {
 
         cd "$SCRIPT_DIR/new-api"
         chmod +x install_newapi_docker.sh
-        ./install_newapi_docker.sh
-
-        if [ $? -eq 0 ]; then
+        if ./install_newapi_docker.sh; then
             NEWAPI_INSTALLED=true
             INSTALLED_SERVICES+=("New-API")
             log_success "New-API 安装成功！"
@@ -240,9 +239,7 @@ install_pi() {
         echo ""
         cd "$SCRIPT_DIR/pi-coding-agent"
         chmod +x install_pi.sh
-        ./install_pi.sh --no-prompt
-
-        if [ $? -eq 0 ]; then
+        if ./install_pi.sh --no-prompt; then
             INSTALLED_SERVICES+=("Pi 编程助手")
             log_success "Pi 安装成功！"
             echo ""
@@ -276,9 +273,18 @@ print_summary() {
     echo ""
     echo -e "${WHITE}常用管理命令:${NC}"
     echo ""
-    echo "  Nginx:"
-    echo "    systemctl status nginx  |  nginx -t  |  systemctl reload nginx"
-    echo ""
+
+    if [ "$NGINX_INSTALLED" = true ]; then
+        echo "  Nginx:"
+        echo "    systemctl status nginx  |  nginx -t  |  systemctl reload nginx"
+        echo ""
+    fi
+
+    if [ "$DOCKER_INSTALLED" = true ]; then
+        echo "  Docker:"
+        echo "    docker info  |  docker compose version"
+        echo ""
+    fi
 
     if [ "$NEWAPI_INSTALLED" = true ]; then
         echo "  New-API:"

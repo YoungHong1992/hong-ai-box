@@ -28,6 +28,7 @@ set -euo pipefail
 
 # ==================== 加载公共库 ====================
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/../lib/common.sh"
 
 # ==================== 帮助信息 ====================

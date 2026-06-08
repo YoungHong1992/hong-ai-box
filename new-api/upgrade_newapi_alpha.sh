@@ -21,6 +21,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/../lib/common.sh"
 
 for arg in "$@"; do
@@ -185,7 +186,7 @@ if $COMPOSE_CMD down && $COMPOSE_CMD up -d; then
     log_success "容器重建成功"
 
     log_info "等待服务启动..."
-    wait_for_healthy "$COMPOSE_CMD" "$SERVICE_DIR" 60 5
+    wait_for_healthy "$COMPOSE_CMD" "$SERVICE_DIR" 60 5 "new-api"
 
     if $COMPOSE_CMD ps 2>/dev/null | grep -q "Up"; then
         log_success "服务运行正常"

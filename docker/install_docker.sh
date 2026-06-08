@@ -28,6 +28,7 @@
 # ==================== 加载公共库 ====================
 LIBSH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/common.sh"
 if [ -f "$LIBSH" ]; then
+    # shellcheck source=lib/common.sh
     source "$LIBSH"
 else
     # 退化：库不存在时提供基本输出

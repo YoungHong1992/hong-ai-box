@@ -24,6 +24,7 @@ set -euo pipefail
 
 # ==================== 加载公共库 ====================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/../lib/common.sh"
 
 # ==================== 帮助信息 ====================
@@ -99,11 +100,13 @@ else
 fi
 
 # 2. 提升系统级文件描述符限制
-if ! grep -q "* soft nofile 65535" /etc/security/limits.conf 2>/dev/null; then
-    echo "* soft nofile 65535" >> /etc/security/limits.conf
-    echo "* hard nofile 65535" >> /etc/security/limits.conf
-    echo "root soft nofile 65535" >> /etc/security/limits.conf
-    echo "root hard nofile 65535" >> /etc/security/limits.conf
+if ! grep -q "soft nofile 65535" /etc/security/limits.conf 2>/dev/null; then
+    {
+        echo "* soft nofile 65535"
+        echo "* hard nofile 65535"
+        echo "root soft nofile 65535"
+        echo "root hard nofile 65535"
+    } >> /etc/security/limits.conf
 fi
 
 # 3. 创建 nginx 运行用户

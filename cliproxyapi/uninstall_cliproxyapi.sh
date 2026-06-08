@@ -21,6 +21,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/../lib/common.sh"
 
 # ==================== 帮助 ====================
@@ -107,6 +108,7 @@ CLIPROXY_CONFIGS=$(find "$NGINX_CONF_DIR" -name "*.conf" -exec grep -l "cliproxy
 
 if [ -n "$CLIPROXY_CONFIGS" ]; then
     echo -e "${YELLOW}找到以下 Nginx 配置文件:${NC}"
+    # shellcheck disable=SC2001
     echo "$CLIPROXY_CONFIGS" | sed 's/^/  /'
     echo ""
 

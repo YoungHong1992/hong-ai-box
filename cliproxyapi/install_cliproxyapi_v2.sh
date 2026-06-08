@@ -29,6 +29,7 @@ set -euo pipefail
 
 # ==================== 加载公共库 ====================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/../lib/common.sh"
 
 # ==================== 帮助 ====================
@@ -289,8 +290,8 @@ if [ "$IS_UPGRADE" = true ]; then
     fi
 else
     # 使用安全的密钥生成
-    API_KEY_1=$(generate_api_key)
-    API_KEY_2=$(generate_api_key)
+    API_KEY_1=$(generate_api_key "sk-")
+    API_KEY_2=$(generate_api_key "sk-")
 
     cat > "$CONFIG_DIR/config.yaml" <<YAML_EOF
 # CliproxyAPI Configuration File

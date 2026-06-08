@@ -28,6 +28,7 @@ set -euo pipefail
 
 # ==================== 加载公共库 ====================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/../lib/common.sh"
 
 # ==================== 帮助 ====================
@@ -67,7 +68,6 @@ DOCKER_ROOT="/opt/docker-services"
 SERVICE_DIR="$DOCKER_ROOT/new-api"
 DATA_DIR="$SERVICE_DIR/data"
 LOGS_DIR="$SERVICE_DIR/logs"
-GITHUB_REPO="QuantumNous/new-api"
 DOCKER_IMAGE="calciumion/new-api:latest"
 DOCKER_NETWORK="ai-services"
 
@@ -81,6 +81,7 @@ if ! command -v docker &> /dev/null; then
     log_warning "未检测到 Docker，尝试自动安装..."
     DOCKER_INSTALLER="$SCRIPT_DIR/../docker/install_docker.sh"
     if [ -f "$DOCKER_INSTALLER" ]; then
+        # shellcheck source=docker/install_docker.sh
         source "$DOCKER_INSTALLER"
         if ! ensure_docker; then
             log_error "Docker 自动安装失败。"
@@ -386,7 +387,7 @@ fi
 
 # 使用健康检查轮询替代固定 sleep
 log_info "等待服务健康检查通过（最多 90 秒）..."
-wait_for_healthy "$COMPOSE_CMD" "$SERVICE_DIR" 90 5
+wait_for_healthy "$COMPOSE_CMD" "$SERVICE_DIR" 90 5 "new-api"
 
 if $COMPOSE_CMD ps 2>/dev/null | grep -q "Up"; then
     log_success "服务运行正常"
@@ -568,7 +569,7 @@ cat > "$INFO_FILE" <<INFO_EOF
        New-API Docker 部署完成 (v${COMMON_VERSION})
 ================================================
 部署时间: $(date '+%Y-%m-%d %H:%M:%S')
-访问模式: $( [ "$USE_HTTP_ONLY" = true ] && echo "HTTP" || ( [ "$USE_DOMAIN" = true ] && echo "域名" || echo "IP" ) )
+访问模式: $(if [ "$USE_HTTP_ONLY" = true ]; then echo "HTTP"; elif [ "$USE_DOMAIN" = true ]; then echo "域名"; else echo "IP"; fi)
 访问地址: $ACCESS_URL
 
 ⚠️ 首次访问请在 Web 界面创建管理员账号
