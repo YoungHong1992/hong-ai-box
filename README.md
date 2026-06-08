@@ -1,7 +1,7 @@
 # VPS 集群部署工具
 
-> **版本**: v3.1
-> **更新日期**: 2026-06-05
+> **版本**: v3.5.0
+> **更新日期**: 2026-06-08
 > **许可证**: MIT
 
 一套 VPS 集群自动化部署工具，用于构建 AI API 网关服务和代理节点。
@@ -28,7 +28,7 @@
 |---------|------|---------|
 | **Ubuntu** | 20.04 / 22.04 / 24.04 | ✅ 推荐 |
 | **Debian** | 11 / 12 | ✅ 支持 |
-| **CentOS Stream** | 9 | ✅ 支持 |
+| **CentOS Stream** | 9 | ✅ 支持（部分模块有限制） |
 
 ### 硬件要求
 
@@ -45,6 +45,12 @@
 - **网络连接**: 需要访问 GitHub、Docker Hub 等
 - **域名（可选）**: 申请 SSL 证书需要已解析的域名（[Cloudflare DNS 配置指南](docs/cloudflare-dns-guide.md)）；也支持 IP 模式（自签名证书）和 HTTP 模式
 - **端口开放**: 80 (HTTP), 443 (HTTPS)
+
+### 推荐工具
+
+| 工具 | 用途 | 安装 |
+|------|------|------|
+| **GitHub CLI (`gh`)** | 查看 CI 状态、管理 PR、发布 Release | [官方安装指南](https://github.com/cli/cli#installation) |
 
 ---
 
@@ -73,6 +79,15 @@ cd new-api && ./install_newapi_docker.sh
 cd pi-coding-agent && ./install_pi.sh
 ```
 
+### 查看帮助
+
+```bash
+./deploy_cluster.sh -h
+./deploy_cluster.sh --version
+```
+
+所有子脚本同样支持 `-h` / `--help` 查看详细说明。
+
 ---
 
 ## 项目结构
@@ -82,35 +97,43 @@ vps_deployment_ai_tools/
 ├── deploy_cluster.sh              # 全流程部署引导脚本
 ├── README.md                      # 本文档
 │
+├── lib/                           # 公共函数库
+│   └── common.sh                  # 颜色、日志、安全检查、SSL 等
+│
 ├── docs/                          # 辅助文档
 │   └── cloudflare-dns-guide.md    # Cloudflare DNS 配置指南
 │
-├── overview/                   # 项目总览与指引（文档）
+├── overview/                      # 项目总览与指引
+│   └── README.md
 │
-├── nginx/                      # Nginx 基础设施（必选）
+├── nginx/                         # Nginx 基础设施（必选）
 │   ├── install_nginx.sh
+│   └── README.md
 │
-├── docker/                     # Docker 容器环境（推荐）
+├── docker/                        # Docker 容器环境（推荐）
 │   ├── install_docker.sh
+│   └── README.md
 │
-├── cliproxyapi/                # CliproxyAPI 轻量代理
+├── cliproxyapi/                   # CliproxyAPI 轻量代理
 │   ├── install_cliproxyapi_v2.sh
+│   ├── apply_ssl.sh
+│   ├── uninstall_cliproxyapi.sh
+│   └── README.md
 │
-├── new-api/                    # New-API AI 网关
+├── new-api/                       # New-API AI 网关
 │   ├── install_newapi_docker.sh
+│   ├── docker-compose.yml
 │   ├── upgrade_newapi_docker.sh
 │   ├── upgrade_newapi_alpha.sh
 │   ├── uninstall_newapi_docker.sh
+│   └── README.md
 │
-│   ├── install_monitor.sh
-│
-│
-└── pi-coding-agent/            # Pi 终端编程助手
+├── pi-coding-agent/               # Pi 终端编程助手
 │   ├── install_pi.sh
+│   └── README.md
 │
-└── science/                    # 网络工具
+└── science/                       # 网络工具（独立，手动部署）
     ├── setup.sh
-    ├── camouflage.sh
     └── README.md
 ```
 
@@ -125,7 +148,7 @@ vps_deployment_ai_tools/
 - Nginx 来自 nginx.org 官方主线仓库，支持 HTTP/3 (QUIC)
 - 自动开启 TCP BBR，优化系统内核参数
 - 构建模块化配置结构 (conf.d/)
-- 编译 Stream 模块，支持四层代理
+- 自动备份已有配置文件
 
 ```bash
 cd nginx && ./install_nginx.sh
@@ -157,6 +180,7 @@ cd docker && ./install_docker.sh
 - 轻量级 AI API 转发代理，资源占用极低（~50MB）
 - 支持 OpenAI、Claude、Gemini 等主流 AI 模型 API
 - 适合低配 VPS（内存 < 1GB）
+- 使用 openssl rand 生成安全密钥
 
 ```bash
 cd cliproxyapi && ./install_cliproxyapi_v2.sh
@@ -171,7 +195,9 @@ cd cliproxyapi && ./install_cliproxyapi_v2.sh
 - 新一代大模型网关与 AI 资产管理系统
 - 支持 OpenAI、Claude、Gemini、Azure 等多种模型聚合
 - 完整的用户管理、令牌分组、计费系统
-- 技术栈：Docker Compose + PostgreSQL + Redis
+- 技术栈：Docker Compose + PostgreSQL/MySQL + Redis
+- 使用 openssl rand 生成安全密码
+- 健康检查轮询替代固定延时等待
 
 ```bash
 cd new-api && ./install_newapi_docker.sh
@@ -179,16 +205,7 @@ cd new-api && ./install_newapi_docker.sh
 
 ---
 
-
-> **依赖**: 无 | **部署方式**: 纯 Bash
-
-
-```bash
-```
-
----
-
-### pi-coding-agent - Pi 终端编程助手【新增】
+### pi-coding-agent - Pi 终端编程助手
 
 > **依赖**: Node.js (脚本自动安装) | **部署方式**: npm 全局安装
 
@@ -248,6 +265,10 @@ science (独立，手动部署，无需依赖)
 | **IP 模式** | 自签名证书 | 测试环境/无域名场景 |
 | **HTTP 模式** | 无 | 内网/开发环境 |
 
+### SSL 安全基线
+
+所有 Nginx 配置统一使用 **TLSv1.2+**，已移除不安全的 TLSv1.1。
+
 ### 多服务域名配置
 
 > **⚠️ 重要**：同一台服务器部署多个服务时，必须为每个服务使用不同的子域名。
@@ -295,6 +316,16 @@ pi -c                           # 继续上次会话
 npm update -g @earendil-works/pi-coding-agent  # 更新 Pi
 ```
 
+### GitHub CLI (gh)
+
+```bash
+gh auth login                   # 登录 GitHub
+gh pr list                      # 查看待合并的 PR
+gh run list                     # 查看最近 CI 运行状态
+gh run view <ID> --log-failed   # 查看失败的 CI 日志
+gh release list                 # 查看 Release 列表
+```
+
 ---
 
 ## 常见问题
@@ -316,6 +347,7 @@ netstat -tlnp | grep :3000    # 检查端口占用
 
 - 确保域名已正确解析到服务器
 - 确保 80 端口开放且未被占用
+- Proxy status 设为 DNS only（关闭 Cloudflare CDN 代理）
 
 ```bash
 dig +short your-domain.com
@@ -344,12 +376,23 @@ netstat -tlnp | grep :80
 # 脚本依次询问：
 # 1. 安装 Nginx（必选）
 # 2. 安装 Docker（推荐）
-# 3. 科学上网工具
-# 4. 安装 CliproxyAPI
-# 5. 安装 New-API
-# 6. 安装 Pi Coding Agent
+# 3. 安装 CliproxyAPI（可选）
+# 4. 安装 New-API（可选）
+# 5. 安装 Pi Coding Agent（可选）
 ```
+
+支持 `-h` 查看帮助，`--version` 查看版本。
 
 ---
 
-**最后更新**: 2026-06-05
+## 安全说明
+
+- 所有密码和密钥使用 `openssl rand` 生成（加密安全随机数）
+- SSL/TLS 最低版本: TLSv1.2（已移除不安全的 TLSv1.1）
+- 安装日志自动记录到 `/var/log/vps-deploy/`
+- Nginx 配置会先备份再覆盖，防止配置丢失
+- 数据库和 Redis 密码均为随机生成，不硬编码
+
+---
+
+**最后更新**: 2026-06-08

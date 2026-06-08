@@ -4,7 +4,7 @@
 #
 # VLESS + Reality 一键部署脚本 (Xray-core)
 #
-# 版本: v1.1
+# 版本: v3.5.0
 # 功能:
 #   1. 下载并安装 Xray-core 最新版
 #   2. 自动生成 X25519 密钥对
@@ -13,6 +13,10 @@
 #   5. 下载 geoip.dat / geosite.dat
 #   6. 开启 BBR 加速
 #
+# 用法:
+#   ./setup.sh           # 交互式部署
+#   ./setup.sh -h        # 显示帮助
+#
 # 前置条件:
 #   - Root 权限
 #   - 境外 VPS (Debian/Ubuntu/CentOS)
@@ -20,83 +24,89 @@
 #
 ################################################################################
 
-set -e
+set -euo pipefail
+
+# ==================== 加载公共库 ====================
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/../lib/common.sh"
+
+# ==================== 帮助信息 ====================
+show_help() {
+    cat <<'EOF'
+VLESS + Reality 一键部署脚本
+
+用法:
+  ./setup.sh              # 交互式部署
+  ./setup.sh -h           # 显示此帮助
+
+环境变量 (可选):
+  DEST_SNI=www.example.com    # 伪装目标 (默认: www.microsoft.com)
+  REALITY_PORT=8443           # 监听端口 (默认: 8443)
+  INFO_FILE=/path/to/info     # 信息输出文件
+
+说明:
+  - 自动下载 Xray-core 最新版
+  - 生成 X25519 密钥对
+  - 配置 VLESS + XTLS-Vision + Reality
+  - 开启 TCP BBR 加速
+EOF
+    exit 0
+}
+
+# ==================== 参数解析 ====================
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help) show_help ;;
+    esac
+done
 
 # ==================== 全局配置 ====================
-
 DEST_SNI="${DEST_SNI:-www.microsoft.com}"
 REALITY_PORT="${REALITY_PORT:-8443}"
 XRAY_DIR="/usr/local/etc/xray"
 INFO_FILE="${INFO_FILE:-$(dirname "$(readlink -f "$0")")/reality_node_info.txt}"
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-NC='\033[0m'
+# ==================== 部署流程 ====================
+check_root
+setup_logging "science-setup"
 
-echo -e "${BOLD}${CYAN}"
-echo "╔══════════════════════════════════════════════╗"
-echo "║     VLESS + Reality 部署 v1.1                ║"
-echo "║     伪装: ${DEST_SNI}                  ║"
-echo "╚══════════════════════════════════════════════╝"
-echo -e "${NC}"
+print_header "VLESS + Reality 部署"
 
-# ==================== 环境检查 ====================
-
-if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}错误: 需要 root 权限。${NC}"
-    exit 1
-fi
-
-if ! command -v curl &>/dev/null; then
-    apt-get update -qq && apt-get install -y -qq curl 2>/dev/null || yum install -y curl 2>/dev/null
-fi
-
-SERVER_IP=$(curl -s4 --connect-timeout 5 https://api.ipify.org 2>/dev/null \
-    || curl -s4 --connect-timeout 5 https://ifconfig.me 2>/dev/null \
-    || hostname -I | awk '{print $1}')
-
-if [ -z "$SERVER_IP" ]; then
-    echo -e "${RED}错误: 无法获取服务器 IP。${NC}"
-    exit 1
-fi
-
-echo -e "服务器 IP: ${GREEN}$SERVER_IP${NC}"
+echo -e "服务器 IP: ${GREEN}$(detect_server_ip)${NC}"
 echo ""
 
 # ==================== 步骤 1: 安装 Xray-core ====================
 
-echo -e "${CYAN}>>> [1/6] 下载安装 Xray-core...${NC}"
+log_step "[1/6] 下载安装 Xray-core..."
 
 if ! command -v xray &>/dev/null; then
     XRAY_VERSION=$(curl -sL --connect-timeout 10 \
         -H "Accept: application/vnd.github+json" \
         "https://api.github.com/repos/XTLS/Xray-core/releases/latest" 2>/dev/null \
-        | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
+        | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1) || true
     [ -z "$XRAY_VERSION" ] && XRAY_VERSION="v26.3.27"
-    echo "  版本: $XRAY_VERSION"
+    log_info "版本: $XRAY_VERSION"
 
-    ARCH=$(uname -m)
-    case "$ARCH" in
-        x86_64)  XRAY_ARCH="linux-64" ;;
-        aarch64) XRAY_ARCH="linux-arm64-v8a" ;;
-        armv7l)  XRAY_ARCH="linux-arm32-v7a" ;;
-        *) echo -e "${RED}不支持架构: $ARCH${NC}"; exit 1 ;;
+    XRAY_ARCH=$(detect_arch)
+    case "$XRAY_ARCH" in
+        linux_amd64)   XRAY_ARCH="linux-64" ;;
+        linux_arm64)   XRAY_ARCH="linux-arm64-v8a" ;;
+        linux_arm32*)  XRAY_ARCH="linux-arm32-v7a" ;;
+        *) log_error "不支持架构: $(uname -m)"; exit 1 ;;
     esac
 
     DOWNLOAD_URL="https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-${XRAY_ARCH}.zip"
 
-    echo "  下载: $DOWNLOAD_URL"
+    log_info "下载: $DOWNLOAD_URL"
     cd /tmp
     rm -f xray.zip
     curl -L --connect-timeout 60 -o xray.zip "$DOWNLOAD_URL" || {
-        echo -e "${RED}下载失败${NC}"
+        log_error "下载失败"
         exit 1
     }
 
-    unzip -o xray.zip >/dev/null 2>&1
+    unzip -o xray.zip >/dev/null 2>&1 || true
     cp xray /usr/local/bin/
     chmod +x /usr/local/bin/xray
 
@@ -121,21 +131,21 @@ SVC
     systemctl daemon-reload
 fi
 
-echo -e "${GREEN}✓ Xray-core 就绪${NC}"
-/usr/local/bin/xray version 2>/dev/null | head -1
+log_success "Xray-core 就绪"
+/usr/local/bin/xray version 2>/dev/null | head -1 || true
 
 # ==================== 步骤 2: 生成密钥 ====================
 
-echo -e "${CYAN}>>> [2/6] 生成 X25519 密钥对...${NC}"
+log_step "[2/6] 生成 X25519 密钥对..."
 
-KEYS=$(/usr/local/bin/xray x25519 2>/dev/null)
-PRIVATE_KEY=$(echo "$KEYS" | grep "^PrivateKey:" | awk '{print $NF}')
-PUBLIC_KEY=$(echo "$KEYS" | grep "^Password (PublicKey):" | awk '{print $NF}')
+KEYS=$(/usr/local/bin/xray x25519 2>/dev/null) || true
+PRIVATE_KEY=$(echo "$KEYS" | grep "^PrivateKey:" | awk '{print $NF}') || true
+PUBLIC_KEY=$(echo "$KEYS" | grep "^Password (PublicKey):" | awk '{print $NF}') || true
 SHORT_ID=$(openssl rand -hex 8 2>/dev/null || head -c 8 /dev/urandom | xxd -p 2>/dev/null || tr -dc 'a-f0-9' < /dev/urandom | head -c 16)
 UUID=$(cat /proc/sys/kernel/random/uuid)
 
 if [ -z "$PRIVATE_KEY" ] || [ -z "$PUBLIC_KEY" ]; then
-    echo -e "${RED}密钥生成失败${NC}"
+    log_error "密钥生成失败"
     exit 1
 fi
 
@@ -146,7 +156,7 @@ echo -e "  UUID:    ${YELLOW}$UUID${NC}"
 
 # ==================== 步骤 3: 下载 geo 数据 ====================
 
-echo -e "${CYAN}>>> [3/6] 下载 geoip/geosite 数据...${NC}"
+log_step "[3/6] 下载 geoip/geosite 数据..."
 
 cd /usr/local/bin
 curl -sL --connect-timeout 30 -o geoip.dat \
@@ -157,11 +167,11 @@ curl -sL --connect-timeout 30 -o geosite.dat \
 PID2=$!
 wait $PID1 2>/dev/null || true
 wait $PID2 2>/dev/null || true
-echo -e "${GREEN}✓ geo 数据就绪${NC}"
+log_success "geo 数据就绪"
 
 # ==================== 步骤 4: 生成配置 ====================
 
-echo -e "${CYAN}>>> [4/6] 配置 Xray Reality...${NC}"
+log_step "[4/6] 配置 Xray Reality..."
 
 mkdir -p "$XRAY_DIR" /var/log/xray
 
@@ -202,40 +212,41 @@ cat > "$XRAY_DIR/config.json" <<XEOF
 }
 XEOF
 
-echo -e "${GREEN}✓ 配置完成${NC}"
+log_success "配置完成"
 
 # ==================== 步骤 5: 启动 ====================
 
-echo -e "${CYAN}>>> [5/6] 启动 Xray 服务...${NC}"
+log_step "[5/6] 启动 Xray 服务..."
 
 systemctl daemon-reload
 systemctl enable xray 2>/dev/null || true
-systemctl restart xray
+systemctl restart xray || true
 sleep 2
 
 if systemctl is-active --quiet xray; then
-    echo -e "${GREEN}✓ Xray 运行中${NC}"
-    ss -tlnp | grep ":$REALITY_PORT"
+    log_success "Xray 运行中"
+    ss -tlnp 2>/dev/null | grep ":$REALITY_PORT" || true
 else
-    echo -e "${RED}✗ 启动失败，日志:${NC}"
-    journalctl -u xray -n 15 --no-pager
+    log_error "启动失败，日志:"
+    journalctl -u xray -n 15 --no-pager || true
     exit 1
 fi
 
 # ==================== 步骤 6: BBR ====================
 
-echo -e "${CYAN}>>> [6/6] 系统优化 (BBR)...${NC}"
+log_step "[6/6] 系统优化 (BBR)..."
 
 modprobe tcp_bbr 2>/dev/null || true
 if ! grep -q "tcp_congestion_control=bbr" /etc/sysctl.conf 2>/dev/null; then
     echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
     echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-    sysctl -p >/dev/null 2>&1
+    sysctl -p >/dev/null 2>&1 || true
 fi
-echo -e "${GREEN}✓ BBR 就绪${NC}"
+log_success "BBR 就绪"
 
 # ==================== 输出结果 ====================
 
+SERVER_IP=$(detect_server_ip)
 VLESS_LINK="vless://$UUID@$SERVER_IP:$REALITY_PORT?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&sni=$DEST_SNI&pbk=$PUBLIC_KEY&sid=$SHORT_ID#MeiDe_Reality"
 
 cat > "$INFO_FILE" <<EOF
@@ -308,3 +319,4 @@ echo -e "${BOLD}$VLESS_LINK${NC}"
 echo ""
 echo -e "详情: ${YELLOW}$INFO_FILE${NC}"
 echo ""
+log_success "日志已保存: $DEPLOY_LOG_FILE"
