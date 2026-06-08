@@ -387,7 +387,7 @@ fi
 
 # 使用健康检查轮询替代固定 sleep
 log_info "等待服务健康检查通过（最多 90 秒）..."
-wait_for_healthy "$COMPOSE_CMD" "$SERVICE_DIR" 90 5 "new-api"
+wait_for_healthy "$COMPOSE_CMD" "$SERVICE_DIR" 90 5 "new-api" || true
 
 if $COMPOSE_CMD ps 2>/dev/null | grep -q "Up"; then
     log_success "服务运行正常"
@@ -544,11 +544,11 @@ sed -i "s|NEWAPI_PORT_PLACEHOLDER|$NEWAPI_PORT|g" "$CONF_FILE"
 log_success "Nginx 配置已生成: $CONF_FILE"
 
 if nginx -t >/dev/null 2>&1; then
-    systemctl reload nginx
+    systemctl reload nginx || true
     log_success "Nginx 已重载"
 else
     log_error "Nginx 配置测试失败"
-    nginx -t
+    nginx -t 2>&1 || true
 fi
 
 # ==================== 生成信息文件 ====================

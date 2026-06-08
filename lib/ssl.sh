@@ -25,7 +25,7 @@ ensure_acme_sh_config() {
 
     if [ ! -f ~/.acme.sh/acme.sh ]; then
         log_info "安装 acme.sh..."
-        curl -s --connect-timeout 10 https://get.acme.sh | sh -s email="$expected_email" >/dev/null 2>&1
+        curl -s --connect-timeout 10 https://get.acme.sh | sh -s email="$expected_email" >/dev/null 2>&1 || true
         if [ -f ~/.bashrc ]; then
             # shellcheck source=/dev/null
             source ~/.bashrc 2>/dev/null || true

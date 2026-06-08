@@ -105,7 +105,6 @@ install_nginx() {
         echo ""
         cd "$SCRIPT_DIR/nginx"
         chmod +x install_nginx.sh
-        ./install_nginx.sh
 
         if ./install_nginx.sh; then
             NGINX_INSTALLED=true

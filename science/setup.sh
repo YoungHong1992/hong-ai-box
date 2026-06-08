@@ -84,7 +84,7 @@ if ! command -v xray &>/dev/null; then
     XRAY_VERSION=$(curl -sL --connect-timeout 10 \
         -H "Accept: application/vnd.github+json" \
         "https://api.github.com/repos/XTLS/Xray-core/releases/latest" 2>/dev/null \
-        | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
+        | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1) || true
     [ -z "$XRAY_VERSION" ] && XRAY_VERSION="v26.3.27"
     log_info "版本: $XRAY_VERSION"
 
@@ -106,7 +106,7 @@ if ! command -v xray &>/dev/null; then
         exit 1
     }
 
-    unzip -o xray.zip >/dev/null 2>&1
+    unzip -o xray.zip >/dev/null 2>&1 || true
     cp xray /usr/local/bin/
     chmod +x /usr/local/bin/xray
 
@@ -138,9 +138,9 @@ log_success "Xray-core 就绪"
 
 log_step "[2/6] 生成 X25519 密钥对..."
 
-KEYS=$(/usr/local/bin/xray x25519 2>/dev/null)
-PRIVATE_KEY=$(echo "$KEYS" | grep "^PrivateKey:" | awk '{print $NF}')
-PUBLIC_KEY=$(echo "$KEYS" | grep "^Password (PublicKey):" | awk '{print $NF}')
+KEYS=$(/usr/local/bin/xray x25519 2>/dev/null) || true
+PRIVATE_KEY=$(echo "$KEYS" | grep "^PrivateKey:" | awk '{print $NF}') || true
+PUBLIC_KEY=$(echo "$KEYS" | grep "^Password (PublicKey):" | awk '{print $NF}') || true
 SHORT_ID=$(openssl rand -hex 8 2>/dev/null || head -c 8 /dev/urandom | xxd -p 2>/dev/null || tr -dc 'a-f0-9' < /dev/urandom | head -c 16)
 UUID=$(cat /proc/sys/kernel/random/uuid)
 
@@ -220,7 +220,7 @@ log_step "[5/6] 启动 Xray 服务..."
 
 systemctl daemon-reload
 systemctl enable xray 2>/dev/null || true
-systemctl restart xray
+systemctl restart xray || true
 sleep 2
 
 if systemctl is-active --quiet xray; then
@@ -228,7 +228,7 @@ if systemctl is-active --quiet xray; then
     ss -tlnp 2>/dev/null | grep ":$REALITY_PORT" || true
 else
     log_error "启动失败，日志:"
-    journalctl -u xray -n 15 --no-pager
+    journalctl -u xray -n 15 --no-pager || true
     exit 1
 fi
 
@@ -240,7 +240,7 @@ modprobe tcp_bbr 2>/dev/null || true
 if ! grep -q "tcp_congestion_control=bbr" /etc/sysctl.conf 2>/dev/null; then
     echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
     echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-    sysctl -p >/dev/null 2>&1
+    sysctl -p >/dev/null 2>&1 || true
 fi
 log_success "BBR 就绪"
 

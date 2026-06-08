@@ -117,7 +117,7 @@ if docker pull "$IMAGE_NAME" 2>&1 | tee /tmp/pull_output.log; then
         log_info "已是最新版本，无需升级"
         echo ""
         if confirm "是否重启服务？"; then
-            $COMPOSE_CMD restart new-api
+            $COMPOSE_CMD restart new-api || true
             log_success "服务已重启"
         fi
         exit 0
@@ -140,14 +140,14 @@ if $COMPOSE_CMD down && $COMPOSE_CMD up -d; then
     log_success "容器重建成功"
 
     log_info "等待服务启动..."
-    wait_for_healthy "$COMPOSE_CMD" "$SERVICE_DIR" 60 5 "new-api"
+    wait_for_healthy "$COMPOSE_CMD" "$SERVICE_DIR" 60 5 "new-api" || true
 
     if $COMPOSE_CMD ps 2>/dev/null | grep -q "Up"; then
         log_success "服务运行正常"
     else
         log_error "服务启动失败，正在回滚..."
         cp "$BACKUP_FILE" "$COMPOSE_FILE"
-        $COMPOSE_CMD up -d
+        $COMPOSE_CMD up -d || true
         log_warning "已回滚到旧版本"
         exit 1
     fi
@@ -177,7 +177,7 @@ echo -e "${NC}"
 echo -e "旧镜像: ${YELLOW}${CURRENT_IMAGE:0:12}${NC}"
 echo -e "新镜像: ${GREEN}${NEW_IMAGE:0:12}${NC}"
 echo ""
-$COMPOSE_CMD ps
+$COMPOSE_CMD ps 2>/dev/null || true
 echo ""
 echo -e "${CYAN}配置保留:${NC} ✓ 环境变量 / 数据库 / Redis / 备份: $BACKUP_FILE"
 echo ""

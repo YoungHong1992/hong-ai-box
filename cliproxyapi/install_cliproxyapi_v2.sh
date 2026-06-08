@@ -191,14 +191,14 @@ log_success "架构: $ARCH"
 # ==================== 获取最新版本 ====================
 log_step "[2/7] 获取最新版本信息..."
 
-RELEASE_INFO=$(curl -s --connect-timeout 15 "$GITHUB_API")
+RELEASE_INFO=$(curl -s --connect-timeout 15 "$GITHUB_API") || true
 
 if [ -z "$RELEASE_INFO" ]; then
     log_error "无法获取版本信息，请检查网络连接。"
     exit 1
 fi
 
-LATEST_VERSION=$(echo "$RELEASE_INFO" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4 | sed 's/^v//')
+LATEST_VERSION=$(echo "$RELEASE_INFO" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4 | sed 's/^v//') || true
 
 if [ -z "$LATEST_VERSION" ]; then
     log_error "无法解析版本号。"
@@ -241,7 +241,7 @@ STEP_NUM=$([ "$IS_UPGRADE" = true ] && echo "4" || echo "3")
 log_step "[${STEP_NUM}/7] 下载并安装 CliproxyAPI..."
 
 EXPECTED_FILENAME="CLIProxyAPI_${LATEST_VERSION}_${ARCH}.tar.gz"
-DOWNLOAD_URL=$(echo "$RELEASE_INFO" | grep -o "\"browser_download_url\": *\"[^\"]*${EXPECTED_FILENAME}[^\"]*\"" | cut -d'"' -f4)
+DOWNLOAD_URL=$(echo "$RELEASE_INFO" | grep -o "\"browser_download_url\": *\"[^\"]*${EXPECTED_FILENAME}[^\"]*\"" | cut -d'"' -f4) || true
 
 if [ -z "$DOWNLOAD_URL" ]; then
     log_error "无法找到架构 ${ARCH} 的下载地址。"
@@ -571,11 +571,11 @@ NGX_H2
     log_success "Nginx 配置已生成: $CONF_FILE"
 
     if nginx -t >/dev/null 2>&1; then
-        systemctl reload nginx
+        systemctl reload nginx || true
         log_success "Nginx 已重载"
     else
         log_error "Nginx 配置测试失败"
-        nginx -t
+        nginx -t 2>&1 || true
     fi
 fi
 
@@ -612,9 +612,9 @@ systemctl daemon-reload
 systemctl enable cliproxyapi >/dev/null 2>&1
 
 if [ "$IS_UPGRADE" = true ] && [ "$SERVICE_WAS_RUNNING" = true ]; then
-    systemctl start cliproxyapi
+    systemctl start cliproxyapi || true
 elif [ "$IS_UPGRADE" = false ]; then
-    systemctl start cliproxyapi
+    systemctl start cliproxyapi || true
 fi
 
 sleep 2

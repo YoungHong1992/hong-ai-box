@@ -173,7 +173,7 @@ server {
 EOF
     TEMP_CONF=true
     mkdir -p /var/www/acme
-    nginx -t >/dev/null 2>&1 && systemctl reload nginx
+    nginx -t >/dev/null 2>&1 && systemctl reload nginx || true
 fi
 
 # 申请证书
@@ -288,11 +288,11 @@ fi
 
 # 测试并重载 Nginx
 if nginx -t >/dev/null 2>&1; then
-    systemctl reload nginx
+    systemctl reload nginx || true
     log_success "Nginx 配置测试通过并已重载"
 else
     log_error "Nginx 配置测试失败，请检查配置"
-    nginx -t
+    nginx -t 2>&1 || true
 fi
 
 # ==================== 输出结果 ====================

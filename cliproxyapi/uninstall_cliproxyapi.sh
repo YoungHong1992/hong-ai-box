@@ -138,7 +138,7 @@ if [ -n "$CLIPROXY_CONFIGS" ]; then
     done
 
     if nginx -t >/dev/null 2>&1; then
-        systemctl reload nginx
+        systemctl reload nginx || true
         log_success "Nginx 已重载"
     else
         log_error "Nginx 配置测试失败，请手动检查"

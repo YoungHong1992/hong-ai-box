@@ -190,7 +190,7 @@ if [ -n "$NGINX_CONF" ] && [ -f "$NGINX_CONF" ]; then
     rm -f "$NGINX_CONF"
     log_success "Nginx 配置已删除"
     if systemctl is-active --quiet nginx 2>/dev/null; then
-        systemctl reload nginx
+        systemctl reload nginx || true
     fi
 fi
 

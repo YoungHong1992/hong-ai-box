@@ -115,7 +115,7 @@ case $CHOICE in
         curl -s --connect-timeout 15 "$GITHUB_API" | grep -oP '"tag_name":\s*"v[0-9.]+-(alpha|beta)\.[0-9]+"' | head -10 | while read -r line; do
             VERSION=$(echo "$line" | grep -oP 'v[0-9.]+-(alpha|beta)\.[0-9]+' || echo "")
             echo -e "  - ${GREEN}$VERSION${NC}"
-        done
+        done || true
         echo ""
         read -r -p "请输入要安装的版本号 (例如 v0.10.6-alpha.2): " TARGET_VERSION
         [ -z "$TARGET_VERSION" ] && { log_error "版本号不能为空"; exit 1; }
@@ -186,7 +186,7 @@ if $COMPOSE_CMD down && $COMPOSE_CMD up -d; then
     log_success "容器重建成功"
 
     log_info "等待服务启动..."
-    wait_for_healthy "$COMPOSE_CMD" "$SERVICE_DIR" 60 5 "new-api"
+    wait_for_healthy "$COMPOSE_CMD" "$SERVICE_DIR" 60 5 "new-api" || true
 
     if $COMPOSE_CMD ps 2>/dev/null | grep -q "Up"; then
         log_success "服务运行正常"
@@ -194,7 +194,7 @@ if $COMPOSE_CMD down && $COMPOSE_CMD up -d; then
         log_error "服务启动失败，正在回滚..."
         cp "$VERSION_BACKUP" "$COMPOSE_FILE"
         $COMPOSE_CMD down 2>/dev/null || true
-        $COMPOSE_CMD up -d
+        $COMPOSE_CMD up -d || true
         log_warning "已回滚到旧版本"
         exit 1
     fi

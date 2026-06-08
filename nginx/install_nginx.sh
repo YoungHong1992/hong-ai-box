@@ -89,7 +89,7 @@ fs.file-max = 1000000
 SYSCTL_EOF
 
 # 应用内核参数
-sysctl -p /etc/sysctl.d/99-vps-optimize.conf > /dev/null 2>&1
+sysctl -p /etc/sysctl.d/99-vps-optimize.conf > /dev/null 2>&1 || true
 
 # 验证 BBR
 BBR_STATUS=$(sysctl net.ipv4.tcp_congestion_control | awk '{print $3}')
@@ -228,7 +228,7 @@ NGINX_EOF
 # 测试配置并启动
 if nginx -t; then
     systemctl enable nginx
-    systemctl restart nginx
+    systemctl restart nginx || true
     log_success "Nginx 配置测试通过，服务已启动"
 else
     log_error "Nginx 配置测试失败，请检查"

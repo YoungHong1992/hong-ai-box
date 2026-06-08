@@ -73,7 +73,7 @@ if command -v node &>/dev/null; then
     log_success "Node.js 已安装 (v${NODE_VERSION})"
 else
     log_info "安装 Node.js v22 LTS..."
-    curl -fsSL --connect-timeout 30 https://deb.nodesource.com/setup_22.x | bash -
+    curl -fsSL --connect-timeout 30 https://deb.nodesource.com/setup_22.x | bash - || { log_error "Node.js 安装失败"; exit 1; }
     apt-get install -y nodejs
     echo ""
     log_success "Node.js 安装完成: $(node --version)"
@@ -93,7 +93,7 @@ fi
 
 echo ""
 log_success "Pi Coding Agent 安装完成!"
-log_info "版本: $(pi --version)"
+log_info "版本: $(pi --version 2>/dev/null || echo 'unknown')"
 log_info "路径: $(which pi)"
 echo ""
 echo "============================================"
