@@ -19,13 +19,13 @@ const (
 
 // ServiceConfig holds per-service settings.
 type ServiceConfig struct {
-	Enabled      bool
-	AccessMode   AccessMode
-	Domain       string
+	Enabled       bool
+	AccessMode    AccessMode
+	Domain        string
 	AdminPassword string // cliproxyapi
-	DBType       DBType // newapi
-	DestSNI      string // science
-	RealityPort  string // science
+	DBType        DBType // newapi
+	DestSNI       string // science
+	RealityPort   string // science
 }
 
 // Config is the global user configuration collected by the wizard.

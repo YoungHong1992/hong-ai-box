@@ -14,8 +14,8 @@
 #   6. 开启 BBR 加速
 #
 # 用法:
-#   ./setup.sh           # 交互式部署
-#   ./setup.sh -h        # 显示帮助
+#   ./install_science.sh           # 交互式部署
+#   ./install_science.sh -h        # 显示帮助
 #
 # 前置条件:
 #   - Root 权限
@@ -37,8 +37,8 @@ show_help() {
 VLESS + Reality 一键部署脚本
 
 用法:
-  ./setup.sh              # 交互式部署
-  ./setup.sh -h           # 显示此帮助
+  ./install_science.sh              # 交互式部署
+  ./install_science.sh -h           # 显示此帮助
 
 环境变量 (可选):
   DEST_SNI=www.example.com    # 伪装目标 (默认: www.microsoft.com)

@@ -14,14 +14,14 @@ const (
 
 // Service describes a deployable component.
 type Service struct {
-	ID          ServiceID
-	Name        string
-	Description string
-	Mandatory   bool
-	Recommended bool
+	ID           ServiceID
+	Name         string
+	Description  string
+	Mandatory    bool
+	Recommended  bool
 	ResourceHint string
-	DependsOn   []ServiceID
-	ScriptPath  string
+	DependsOn    []ServiceID
+	ScriptPath   string
 }
 
 // AllServices is the canonical list of services.
@@ -80,7 +80,7 @@ var AllServices = []Service{
 		Mandatory:    false,
 		Recommended:  false,
 		ResourceHint: "极低",
-		ScriptPath:   "scripts/science/setup.sh",
+		ScriptPath:   "scripts/science/install_science.sh",
 	},
 }
 

@@ -1,5 +1,5 @@
 # Binaries
-hongaibox
+/hongaibox
 *.exe
 *.dll
 *.so
@@ -13,6 +13,9 @@ hongaibox
 
 # Go vendor
 coverage.out
+
+# AI assistant
+.claude/
 
 # IDE
 .idea/

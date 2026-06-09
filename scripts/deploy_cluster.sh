@@ -51,7 +51,7 @@ VPS 集群全流程部署引导工具 v${COMMON_VERSION}
   cd new-api && ./install_newapi_docker.sh
   cd cliproxyapi && ./install_cliproxyapi_v2.sh
   cd pi-coding-agent && ./install_pi.sh
-  cd science && ./setup.sh          # 网络工具（独立，需手动执行）
+  cd science && ./install_science.sh # 网络工具（独立，需手动执行）
 
 注意:
   - 需要 root 权限
