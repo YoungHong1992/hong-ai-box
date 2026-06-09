@@ -26,8 +26,8 @@ var (
 
 	// Subtitle is a secondary header.
 	Subtitle = lipgloss.NewStyle().
-		Foreground(Secondary).
-		MarginBottom(1)
+			Foreground(Secondary).
+			MarginBottom(1)
 
 	// Normal text.
 	Normal = lipgloss.NewStyle().

@@ -2,8 +2,11 @@ package app
 
 import (
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
@@ -34,12 +37,7 @@ func (m *AppModel) initGlobalConfigForm() {
 				Title("域名").
 				Description("例如: api.example.com").
 				Placeholder("api.example.com").
-				Validate(func(s string) error {
-					if s == "" {
-						return fmt.Errorf("域名不能为空")
-					}
-					return nil
-				}),
+				Validate(validateDomain),
 		).WithHideFunc(func() bool {
 			return mode != wizard.AccessDomain
 		}),
@@ -69,7 +67,7 @@ func (m AppModel) updateGlobalConfig(msg tea.Msg) (tea.Model, tea.Cmd) {
 		rawDomain := m.globalConfigForm.Get("domain")
 		if rawDomain != nil {
 			if domain, ok := rawDomain.(string); ok {
-				m.config.Domain = domain
+				m.config.Domain = strings.TrimSpace(domain)
 			}
 		}
 
@@ -104,11 +102,70 @@ func (m AppModel) viewGlobalConfig() string {
 	return b.String()
 }
 
-// detectServerIP attempts to detect the public IP.
+// validateDomain performs conservative ASCII domain validation.
+func validateDomain(s string) error {
+	raw := s
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return fmt.Errorf("域名不能为空")
+	}
+	if len(s) > 253 {
+		return fmt.Errorf("域名过长 (最多 253 字符)")
+	}
+	if raw != s || strings.ContainsAny(s, " \t\r\n") {
+		return fmt.Errorf("域名不能包含空白字符")
+	}
+	if !strings.Contains(s, ".") {
+		return fmt.Errorf("请输入有效的域名 (需包含 '.')")
+	}
+	if strings.HasPrefix(s, ".") || strings.HasSuffix(s, ".") {
+		return fmt.Errorf("域名不能以点号开头或结尾")
+	}
+
+	for _, label := range strings.Split(s, ".") {
+		if label == "" {
+			return fmt.Errorf("域名标签不能为空")
+		}
+		if len(label) > 63 {
+			return fmt.Errorf("域名单段长度不能超过 63 字符")
+		}
+		if label[0] == '-' || label[len(label)-1] == '-' {
+			return fmt.Errorf("域名单段不能以连字符开头或结尾")
+		}
+		for i := 0; i < len(label); i++ {
+			ch := label[i]
+			if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-') {
+				return fmt.Errorf("域名只能包含字母、数字、点号和连字符")
+			}
+		}
+	}
+	return nil
+}
+
+// detectServerIP attempts to detect the public IP via public echo services.
 func detectServerIP() string {
-	// Try common IP detection services
-	// In a real implementation this could use net/http
-	// For now return empty and let user input later if needed
+	services := []string{
+		"https://api.ipify.org",
+		"https://ifconfig.me/ip",
+		"https://icanhazip.com",
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+
+	for _, url := range services {
+		resp, err := client.Get(url)
+		if err != nil {
+			continue
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64))
+		closeErr := resp.Body.Close()
+		if readErr != nil || closeErr != nil || resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			continue
+		}
+		ip := strings.TrimSpace(string(body))
+		if net.ParseIP(ip) != nil {
+			return ip
+		}
+	}
 	return ""
 }
 

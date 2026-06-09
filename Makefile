@@ -1,5 +1,8 @@
 BINARY := hongaibox
 VERSION := 4.0.0
+PREFIX ?= /usr/local
+BINDIR := $(PREFIX)/bin
+SHAREDIR := $(PREFIX)/share/hongaibox
 LDFLAGS := -X github.com/hongge/hongaibox/internal/version.Version=$(VERSION)
 
 .PHONY: all build install test clean shellcheck
@@ -10,7 +13,10 @@ build:
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/hongaibox
 
 install: build
-	install -Dm755 $(BINARY) /usr/local/bin/$(BINARY)
+	install -Dm755 $(BINARY) $(BINDIR)/$(BINARY)
+	rm -rf $(SHAREDIR)/scripts
+	mkdir -p $(SHAREDIR)
+	cp -a scripts $(SHAREDIR)/
 
 test:
 	go test ./...

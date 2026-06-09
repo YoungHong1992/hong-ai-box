@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/hongge/hongaibox/internal/app"
+	"github.com/hongge/hongaibox/internal/backend"
 	"github.com/hongge/hongaibox/internal/version"
 )
 
@@ -43,6 +44,7 @@ func main() {
 
 	m := app.NewAppModel()
 	p := tea.NewProgram(m, tea.WithAltScreen())
+	backend.Program = p
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "错误: %v\n", err)
 		os.Exit(1)

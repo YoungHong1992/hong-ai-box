@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 
@@ -121,9 +121,10 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case reviewConfirmMsg:
 		m.orderedIDs = wizard.ResolveDeps(m.config.SelectedIDs())
 		m.advancePage()
-		return m, nil
+		cmd := m.runCurrentScript()
+		return m, cmd
 
-	case logMsg:
+	case backend.LogMsg:
 		prefix := ""
 		if msg.Source == "stderr" {
 			prefix = "[stderr] "
@@ -134,7 +135,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.vp.GotoBottom()
 		return m, nil
 
-	case scriptDoneMsg:
+	case backend.ScriptDoneMsg:
 		m.results[msg.Script] = msg.Err
 		if msg.Output != "" {
 			m.logs = append(m.logs, msg.Output)
@@ -152,7 +153,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.advancePage()
 			return m, nil
 		}
-		return m, m.runCurrentScript()
+		cmd := m.runCurrentScript()
+		return m, cmd
 	}
 
 	// Page-specific handling
@@ -289,14 +291,20 @@ func (m *AppModel) startInstall() {
 }
 
 // runCurrentScript returns a tea.Cmd that runs the current script.
-func (m AppModel) runCurrentScript() tea.Cmd {
+func (m *AppModel) runCurrentScript() tea.Cmd {
 	if m.scriptIdx >= len(m.orderedIDs) {
 		return nil
 	}
 	id := m.orderedIDs[m.scriptIdx]
 	svc, ok := wizard.ServiceByID(id)
 	if !ok {
-		return m.runCurrentScript() // skip unknown
+		m.scriptIdx++
+		if m.scriptIdx >= len(m.orderedIDs) {
+			m.installing = false
+			m.advancePage()
+			return nil
+		}
+		return m.runCurrentScript()
 	}
 
 	m.logs = append(m.logs, fmt.Sprintf("\n▶ 正在安装: %s", svc.Name))
