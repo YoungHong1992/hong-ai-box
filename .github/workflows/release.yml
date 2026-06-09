@@ -101,11 +101,11 @@ jobs:
           #!/usr/bin/env bash
           #
           # hongaibox 一键安装脚本
-          # 用法: curl -fsSL https://github.com/hongge/hongaibox/releases/latest/download/install.sh | sudo bash
+          # 用法: curl -fsSL https://github.com/YoungHong1992/hong-ai-box/releases/latest/download/install.sh | sudo bash
           #
           set -euo pipefail
 
-          REPO="hongge/hongaibox"
+          REPO="YoungHong1992/hong-ai-box"
           BINARY="hongaibox"
           INSTALL_DIR="/usr/local/bin"
           SHARE_DIR="/usr/local/share/hongaibox"
@@ -192,7 +192,7 @@ jobs:
             ### 快速安装（Linux）
 
             ```bash
-            curl -fsSL https://github.com/hongge/hongaibox/releases/latest/download/install.sh | sudo bash
+            curl -fsSL https://github.com/YoungHong1992/hong-ai-box/releases/latest/download/install.sh | sudo bash
             ```
 
             ### 手动下载
