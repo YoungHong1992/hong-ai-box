@@ -1,5 +1,5 @@
 BINARY := hongaibox
-VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo '4.0.0')
+VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo '0.1.0')
 PREFIX ?= /usr/local
 BINDIR := $(PREFIX)/bin
 SHAREDIR := $(PREFIX)/share/hongaibox

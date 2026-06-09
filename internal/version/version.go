@@ -2,7 +2,7 @@ package version
 
 // Version is the current version of hongaibox.
 // It can be overridden at build time via ldflags.
-var Version = "4.0.0"
+var Version = "0.1.0"
 
 // Name is the application name.
 const Name = "hongaibox"
