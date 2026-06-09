@@ -23,8 +23,8 @@
 ### 从源码构建
 
 ```bash
-git clone https://github.com/hongge/hongaibox.git
-cd hongaibox
+git clone https://github.com/YoungHong1992/hong-ai-box.git
+cd hong-ai-box
 make build
 sudo ./hongaibox
 ```
