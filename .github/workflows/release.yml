@@ -9,219 +9,72 @@ permissions:
   contents: write
 
 jobs:
-  # ──────────────────────────────────────────────
-  # 1. Go 交叉编译，生成多平台二进制 + 校验文件
-  # ──────────────────────────────────────────────
-  build:
-    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          # Linux（主要目标：云服务器）
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
-          # macOS（开发调试用）
-          - goos: darwin
-            goarch: amd64
-          - goos: darwin
-            goarch: arm64
-          # Windows
-          - goos: windows
-            goarch: amd64
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
-
-      - name: Build binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          BINARY=hongaibox_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}
-          # Windows 需要加 .exe 后缀
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            BINARY="${BINARY}.exe"
-          fi
-          go build \
-            -ldflags "-X github.com/hongge/hongaibox/internal/version.Version=${VERSION}" \
-            -o "${BINARY}" \
-            ./cmd/hongaibox
-          echo "BINARY=${BINARY}" >> "$GITHUB_ENV"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.BINARY }}
-          path: ${{ env.BINARY }}
-          retention-days: 1
-
-  # ──────────────────────────────────────────────
-  # 2. 生成安装脚本 & 校验文件，创建 GitHub Release
-  # ──────────────────────────────────────────────
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: build
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist/
-          merge-multiple: true
+      - name: Generate version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-      - name: Generate checksums
+      - name: Bundle scripts
         run: |
-          cd dist
-          sha256sum hongaibox_* > ../checksums.txt
-          mv ../checksums.txt .
-          echo "## SHA256 校验和" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          cat checksums.txt >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          tar czf hong-ai-box-scripts.tar.gz scripts/
+          sha256sum hong-ai-box-scripts.tar.gz > checksums.txt
 
-      - name: Bundle scripts into tarball
-        run: |
-          tar czf dist/scripts.tar.gz scripts/
-
-      - name: Generate install script
-        run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          cat > dist/install.sh << 'INSTALL_EOF'
-          #!/usr/bin/env bash
-          #
-          # hongaibox 一键安装脚本
-          # 用法: curl -fsSL https://github.com/YoungHong1992/hong-ai-box/releases/latest/download/install.sh | sudo bash
-          #
-          set -euo pipefail
-
-          REPO="YoungHong1992/hong-ai-box"
-          BINARY="hongaibox"
-          INSTALL_DIR="/usr/local/bin"
-          SHARE_DIR="/usr/local/share/hongaibox"
-
-          # ── 颜色 ──
-          RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
-
-          info()  { printf "${GREEN}[INFO]${NC}  %s\n" "$*"; }
-          warn()  { printf "${YELLOW}[WARN]${NC}  %s\n" "$*"; }
-          die()   { printf "${RED}[ERROR]${NC} %s\n" "$*" >&2; exit 1; }
-
-          # ── 检查 root ──
-          [ "$(id -u)" -eq 0 ] || die "请使用 root 权限运行: sudo bash install.sh"
-
-          # ── 检测架构 ──
-          ARCH=$(uname -m)
-          case "$ARCH" in
-            x86_64|amd64)   GOARCH="amd64" ;;
-            aarch64|arm64)  GOARCH="arm64" ;;
-            *)              die "不支持的架构: $ARCH" ;;
-          esac
-
-          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-
-          # ── 获取最新版本 ──
-          info "获取最新版本..."
-          LATEST=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-            | grep '"tag_name"' | head -1 | sed -E 's/.*"v?([^"]+)".*/\1/')
-
-          [ -n "$LATEST" ] || die "无法获取最新版本号"
-
-          FILE="${BINARY}_${LATEST}_${OS}_${GOARCH}"
-          URL="https://github.com/${REPO}/releases/latest/download/${FILE}"
-
-          # ── 下载 ──
-          info "下载 ${BINARY} v${LATEST} (${OS}/${GOARCH})..."
-          TMPDIR=$(mktemp -d)
-          trap 'rm -rf "$TMPDIR"' EXIT
-
-          curl -fSL --progress-bar -o "${TMPDIR}/${BINARY}" "${URL}" \
-            || die "下载失败，请检查网络连接"
-
-          # ── 校验（可选）──
-          CHECKSUM_URL="https://github.com/${REPO}/releases/latest/download/checksums.txt"
-          if curl -fsSL "$CHECKSUM_URL" -o "${TMPDIR}/checksums.txt" 2>/dev/null; then
-            info "验证文件完整性..."
-            EXPECTED=$(grep "${FILE}" "${TMPDIR}/checksums.txt" | awk '{print $1}')
-            ACTUAL=$(sha256sum "${TMPDIR}/${BINARY}" | awk '{print $1}')
-            if [ -n "$EXPECTED" ] && [ "$EXPECTED" != "$ACTUAL" ]; then
-              die "校验失败！文件可能已损坏"
-            fi
-            info "校验通过 ✓"
-          else
-            warn "无法下载校验文件，跳过校验"
-          fi
-
-          # ── 安装 ──
-          info "安装到 ${INSTALL_DIR}/${BINARY}..."
-          install -Dm755 "${TMPDIR}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
-
-          # ── 下载 scripts ──
-          SCRIPTS_URL="https://github.com/${REPO}/releases/latest/download/scripts.tar.gz"
-          if curl -fsSL "$SCRIPTS_URL" -o "${TMPDIR}/scripts.tar.gz" 2>/dev/null; then
-            info "安装脚本到 ${SHARE_DIR}/scripts/..."
-            rm -rf "${SHARE_DIR}/scripts"
-            mkdir -p "${SHARE_DIR}"
-            tar xzf "${TMPDIR}/scripts.tar.gz" -C "${SHARE_DIR}/"
-          fi
-
-          # ── 完成 ──
-          echo
-          info "✅ ${BINARY} v${LATEST} 安装成功！"
-          info "运行 ${INSTALL_DIR}/${BINARY} 开始使用"
-          INSTALL_EOF
-          chmod +x dist/install.sh
-
-      - name: Create GitHub Release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           name: "hongaibox ${{ github.ref_name }}"
           body: |
-            ## hongaibox ${{ github.ref_name }}
+            ## 洪哥的 AI 工具箱 ${{ github.ref_name }}
 
-            ### 快速安装（Linux）
+            ### 方式一：一键安装（推荐）
 
             ```bash
-            curl -fsSL https://github.com/YoungHong1992/hong-ai-box/releases/latest/download/install.sh | sudo bash
+            curl -fsSL https://raw.githubusercontent.com/YoungHong1992/hong-ai-box/main/install.sh | sudo bash
             ```
 
-            ### 手动下载
+            ### 方式二：下载完整包
 
-            | 平台 | 架构 | 文件 |
-            |------|------|------|
-            | Linux | amd64 | `hongaibox_*_linux_amd64` |
-            | Linux | arm64 | `hongaibox_*_linux_arm64` |
-            | macOS | amd64 | `hongaibox_*_darwin_amd64` |
-            | macOS | arm64 | `hongaibox_*_darwin_arm64` |
-            | Windows | amd64 | `hongaibox_*_windows_amd64.exe` |
-
-            下载后：
             ```bash
-            chmod +x hongaibox_*_linux_amd64
-            sudo ./hongaibox
+            # 下载并解压
+            curl -fsSLO https://github.com/YoungHong1992/hong-ai-box/releases/latest/download/hong-ai-box-scripts.tar.gz
+            tar xzf hong-ai-box-scripts.tar.gz
+
+            # 复制 install.sh 到项目根目录（也可从仓库直接下载）
+            curl -fsSLO https://raw.githubusercontent.com/YoungHong1992/hong-ai-box/main/install.sh
+            chmod +x install.sh
+
+            # 运行
+            sudo ./install.sh
             ```
 
-            ### 校验
-            下载 `checksums.txt`，运行：
+            ### 方式三：克隆仓库
+
             ```bash
-            sha256sum -c checksums.txt --ignore-missing
+            git clone https://github.com/YoungHong1992/hong-ai-box.git
+            cd hong-ai-box
+            chmod +x install.sh
+            sudo ./install.sh
             ```
+
+            ### 可用组件
+
+            | 组件 | 描述 | 资源需求 |
+            |------|------|----------|
+            | Nginx (HTTP/3) | 高性能 Web 服务器 + 反向代理 | 512MB 内存 |
+            | Docker | Docker Engine + Compose 插件 | 无额外需求 |
+            | CliproxyAPI | 轻量 AI API 转发代理 (~50MB) | 256MB 内存 |
+            | New-API | AI 模型网关与资产管理系统 | ≥ 1GB 内存 |
+            | Pi | 终端 AI 编程助手 | 500MB 磁盘 |
+            | Science | VLESS + XTLS-Vision + Reality | 极低 |
 
           files: |
-            dist/hongaibox_*
-            dist/checksums.txt
-            dist/install.sh
-            dist/scripts.tar.gz
+            hong-ai-box-scripts.tar.gz
+            checksums.txt
           draft: false
           prerelease: false
         env:
