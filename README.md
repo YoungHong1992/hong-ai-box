@@ -1,68 +1,74 @@
 # hongaibox — 洪哥的 AI 工具箱
 
 > **版本**: v4.0.0
-> **更新日期**: 2026-06-08
+> **更新日期**: 2026-06-10
 > **许可证**: MIT
 
-一套面向云服务器的 AI 工具自动化部署工具，采用现代化 TUI（Text User Interface）交互，让你通过键盘方向键、空格、回车即可完成整套 AI 集群的部署。
+一套面向云服务器的 AI 工具自动化部署脚本，选择服务 → 填写配置 → 一键安装，三步完成整套 AI 集群的部署。
 
 ---
 
-## 特性
+## ✨ 特性
 
-- 🖥️ **交互式 TUI**：基于 [Bubble Tea](https://github.com/charmbracelet/bubbletea) 的现代化终端界面，告别繁琐的命令行问答
-- 🚀 **一键部署**：勾选服务 → 填写配置 → 确认安装，三步完成
-- 📦 **单二进制分发**：编译为单个可执行文件，零依赖，跨发行版
-- 🔒 **安全基线**：密码/密钥由 `crypto/rand` 生成，TLS 1.2+，自动 SSL 证书
-- 🧩 **模块化后端**：后端安装逻辑渐进式复用 Bash 脚本，稳定可靠
+- 🚀 **一键部署**：一个脚本，勾选服务即可安装全部组件
+- 🎨 **彩色终端界面**：清晰的交互式引导，告别繁琐的命令行问答
+- 🔒 **安全基线**：密码/密钥自动生成，TLS 1.2+，自动 SSL 证书
+- 📦 **零依赖**：纯 Bash 实现，兼容 Debian/Ubuntu，无需安装额外运行时
+- 🧩 **模块化**：每个服务可独立安装，也可通过总入口一键部署
 
 ---
 
-## 快速开始
+## 🚀 快速开始
 
-### 从源码构建
+### 一键安装（推荐）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YoungHong1992/hong-ai-box/main/install.sh | sudo bash
+```
+
+### 克隆仓库安装
 
 ```bash
 git clone https://github.com/YoungHong1992/hong-ai-box.git
 cd hong-ai-box
-make build
-sudo ./hongaibox
+chmod +x install.sh
+sudo ./install.sh
 ```
 
-### 查看帮助
+### 单独安装某个服务
 
 ```bash
-./hongaibox -h
-./hongaibox --version
+cd scripts
+sudo ./nginx/install_nginx.sh          # 安装 Nginx
+sudo ./docker/install_docker.sh        # 安装 Docker
+sudo ./cliproxyapi/install_cliproxyapi_v2.sh  # 安装 CliproxyAPI
+sudo ./new-api/install_newapi_docker.sh      # 安装 New-API
+sudo ./pi-coding-agent/install_pi.sh         # 安装 Pi
+sudo ./science/install_science.sh            # 安装 Science
 ```
 
 ---
 
-## 项目结构
+## 📁 项目结构
 
 ```
-hongaibox/
-├── cmd/hongaibox/              # Go 主入口
-├── internal/
-│   ├── app/                    # Bubble Tea TUI 应用
-│   ├── wizard/                 # 服务定义与配置结构
-│   └── backend/                # Bash 脚本执行器
-├── scripts/                    # 后端安装脚本（Bash）
-│   ├── nginx/
-│   ├── docker/
-│   ├── cliproxyapi/
-│   ├── new-api/
-│   ├── pi-coding-agent/
-│   ├── science/
-│   └── lib/                    # Bash 公共库
-├── tests/                      # Bats 测试
+hong-ai-box/
+├── install.sh                  # 🎯 总入口：一键部署全部组件
+├── scripts/                    # 安装脚本
+│   ├── nginx/                  #   Nginx (HTTP/3 + BBR)
+│   ├── docker/                 #   Docker Engine + Compose
+│   ├── cliproxyapi/            #   轻量 AI API 转发代理
+│   ├── new-api/                #   AI 模型网关
+│   ├── pi-coding-agent/        #   终端 AI 编程助手
+│   ├── science/                #   VLESS + Reality
+│   └── lib/                    #   公共函数库（日志、颜色、网络等）
 ├── docs/                       # 辅助文档
-└── Makefile
+└── README.md
 ```
 
 ---
 
-## 组件说明
+## 📦 组件说明
 
 | 组件 | 描述 | 资源需求 |
 |------|------|----------|
@@ -75,35 +81,44 @@ hongaibox/
 
 ---
 
-## 开发
+## 🛠 使用流程
 
-### 构建
-
-```bash
-make build
 ```
-
-### 测试
-
-```bash
-make test       # Go 单元测试
-make shellcheck # Bash 脚本静态检查
+1. 检测 → 自动发现已安装的服务
+2. 选择 → 输入数字选择要安装的服务（支持多选）
+3. 配置 → 设置访问方式（域名/IP/HTTP）和各项参数
+4. 确认 → 查看配置总览，确认无误
+5. 安装 → 按依赖顺序自动执行安装脚本
+6. 完成 → 显示总结和常用管理命令
 ```
-
-### 依赖
-
-- Go 1.24+
-- Bubble Tea / Huh / Lipgloss / Bubbles
 
 ---
 
-## 安全说明
+## 🔒 安全说明
 
 - 所有密码和密钥使用加密安全随机数生成
 - SSL/TLS 最低版本: TLSv1.2
 - 安装日志自动记录到 `/var/log/vps-deploy/`
 - Nginx 配置先备份再覆盖
+- 支持域名（Let's Encrypt）和 IP（自签名）两种证书模式
 
 ---
 
-**最后更新**: 2026-06-08
+## 🧪 开发
+
+### ShellCheck 静态检查
+
+```bash
+# 安装 shellcheck
+apt-get install -y shellcheck
+
+# 检查所有脚本
+find scripts -name '*.sh' -exec shellcheck {} +
+
+# 检查 install.sh
+shellcheck install.sh
+```
+
+---
+
+**最后更新**: 2026-06-10
