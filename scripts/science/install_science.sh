@@ -4,7 +4,7 @@
 #
 # VLESS + Reality 一键部署脚本 (Xray-core)
 #
-# 版本: v3.5.0
+# 版本: v4.0.0
 # 功能:
 #   1. 下载并安装 Xray-core 最新版
 #   2. 自动生成 X25519 密钥对
@@ -72,6 +72,13 @@ INFO_FILE="${INFO_FILE:-$(dirname "$(readlink -f "$0")")/reality_node_info.txt}"
 check_root
 setup_logging "science-setup"
 
+ensure_commands curl unzip openssl
+validate_sni "$DEST_SNI" || exit 1
+validate_port "$REALITY_PORT" || exit 1
+if ! systemctl is-active --quiet xray 2>/dev/null; then
+    ensure_port_available "$REALITY_PORT" "Xray Reality"
+fi
+
 print_header "VLESS + Reality 部署"
 
 echo -e "服务器 IP: ${GREEN}$(detect_server_ip)${NC}"
@@ -107,7 +114,7 @@ if ! command -v xray &>/dev/null; then
         exit 1
     }
 
-    unzip -o xray.zip >/dev/null 2>&1 || true
+    unzip -o xray.zip >/dev/null 2>&1 || { log_error "解压 Xray 失败"; exit 1; }
     cp xray /usr/local/bin/
     chmod +x /usr/local/bin/xray
 

@@ -15,9 +15,9 @@ setup_logging() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 脚本: $script_name"
 }
 
-log_info()    { echo -e "${BLUE}[INFO]${NC} $(date '+%H:%M:%S') $*"; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $(date '+%H:%M:%S') $*"; }
-log_warning() { echo -e "${YELLOW}[WARNING]${NC} $(date '+%H:%M:%S') $*"; }
+log_info()    { echo -e "${BLUE}[INFO]${NC} $(date '+%H:%M:%S') $*" >&2; }
+log_success() { echo -e "${GREEN}[SUCCESS]${NC} $(date '+%H:%M:%S') $*" >&2; }
+log_warning() { echo -e "${YELLOW}[WARNING]${NC} $(date '+%H:%M:%S') $*" >&2; }
 log_error()   { echo -e "${RED}[ERROR]${NC} $(date '+%H:%M:%S') $*" >&2; }
-log_step()    { echo -e "${CYAN}[STEP]${NC} $(date '+%H:%M:%S') $*"; }
-log_debug()   { echo -e "${DIM}[DEBUG]${NC} $(date '+%H:%M:%S') $*"; }
+log_step()    { echo -e "${CYAN}[STEP]${NC} $(date '+%H:%M:%S') $*" >&2; }
+log_debug()   { echo -e "${DIM}[DEBUG]${NC} $(date '+%H:%M:%S') $*" >&2; }

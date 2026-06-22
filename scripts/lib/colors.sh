@@ -16,11 +16,11 @@ NC='\033[0m'
 BOLD='\033[1m'
 DIM='\033[2m'
 
-readonly COMMON_VERSION="3.5.0"
+readonly COMMON_VERSION="4.0.0"
 
 print_header() {
     local title="${1:-部署工具}"
-    clear
+    clear 2>/dev/null || true
     echo -e "${CYAN}"
     echo "╔══════════════════════════════════════════════════════════════╗"
     echo "║                                                              ║"

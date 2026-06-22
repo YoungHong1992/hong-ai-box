@@ -3,7 +3,7 @@
 ################################################################################
 #
 # CliproxyAPI 智能安装/升级脚本
-# 版本: v3.5.0
+# 版本: v4.0.0
 #
 # 功能说明：
 #   1. 自动检测是否已安装（智能判断全新安装 or 升级）
@@ -76,7 +76,7 @@ GITHUB_API="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
 check_root
 setup_logging "cliproxyapi-install"
 
-ensure_commands curl wget tar
+ensure_commands curl wget tar openssl
 
 if ! command -v nginx &> /dev/null; then
     log_error "未检测到 Nginx，请先运行 install_nginx.sh"
@@ -98,7 +98,7 @@ if [ -f "$INSTALL_DIR/version.txt" ]; then
 fi
 
 # ==================== 欢迎横幅 ====================
-clear
+clear 2>/dev/null || true
 if [ "$IS_UPGRADE" = true ]; then
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${CYAN}   CliproxyAPI 升级程序 v${COMMON_VERSION}${NC}"
@@ -187,6 +187,21 @@ else
 
     if [ -f "$CONFIG_DIR/config.yaml" ]; then
         ADMIN_SECRET=$(grep "secret-key:" "$CONFIG_DIR/config.yaml" | awk '{print $2}' | tr -d '"' || echo "")
+    fi
+fi
+
+if [ "$IS_UPGRADE" = false ]; then
+    case "$MODE" in
+        domain) validate_domain "$DOMAIN" || exit 1 ;;
+        ip|http) validate_ip "$DOMAIN" || exit 1 ;;
+        *) log_error "未知访问模式: $MODE"; exit 1 ;;
+    esac
+
+    PREEXISTING_CONF="$(find_nginx_conf_by_server_name "$DOMAIN" "$CONF_D" || true)"
+    if [ -n "$PREEXISTING_CONF" ] && ! grep -q "CLI-PROXY-API-START" "$PREEXISTING_CONF"; then
+        log_error "Nginx server_name 已被其他配置占用: $PREEXISTING_CONF"
+        log_error "请为 CliproxyAPI 使用独立域名，避免覆盖其他服务。"
+        exit 1
     fi
 fi
 
@@ -305,6 +320,7 @@ else
     # 使用安全的密钥生成
     API_KEY_1=$(generate_api_key "sk-")
     API_KEY_2=$(generate_api_key "sk-")
+    ADMIN_SECRET_ESCAPED=$(escape_double_quoted "$ADMIN_SECRET")
 
     cat > "$CONFIG_DIR/config.yaml" <<YAML_EOF
 # CliproxyAPI Configuration File
@@ -325,7 +341,7 @@ api-keys:
 # ==================== Management Panel ====================
 remote-management:
   allow-remote: true
-  secret-key: "$ADMIN_SECRET"
+  secret-key: "$ADMIN_SECRET_ESCAPED"
   disable-control-panel: false
   panel-github-repository: "https://github.com/router-for-me/Cli-Proxy-API-Management-Center"
 
@@ -475,6 +491,14 @@ LOC_EOF
 
     # 生成 Nginx 配置
     CONF_FILE="$CONF_D/${DOMAIN}.conf"
+
+    EXISTING_DOMAIN_CONF="$(find_nginx_conf_by_server_name "$DOMAIN" "$CONF_D" || true)"
+    if [ -n "$EXISTING_DOMAIN_CONF" ] && ! grep -q "CLI-PROXY-API-START" "$EXISTING_DOMAIN_CONF"; then
+        log_error "Nginx server_name 已被其他配置占用: $EXISTING_DOMAIN_CONF"
+        log_error "请为 CliproxyAPI 使用独立域名，避免覆盖其他服务。"
+        exit 1
+    fi
+    [ -f "$CONF_FILE" ] && backup_file "$CONF_FILE"
 
     if [ "$USE_HTTP_ONLY" = true ]; then
         # HTTP 模式
@@ -641,7 +665,7 @@ fi
 # ==================== 完成信息 ====================
 SERVER_IP=$(detect_server_ip)
 
-clear
+clear 2>/dev/null || true
 echo -e "${GREEN}"
 if [ "$IS_UPGRADE" = true ]; then
     cat <<EOF

@@ -7,15 +7,28 @@ on:
     branches: [main, master]
 
 jobs:
-  shellcheck:
-    name: ShellCheck
+  shell:
+    name: Shell scripts
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run ShellCheck
-        uses: ludeeus/action-shellcheck@master
-        with:
-          scandir: 'scripts/'
-          severity: warning
-        env:
-          SHELLCHECK_OPTS: -x
+
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Bash syntax check
+        run: |
+          find . -path ./.git -prune -o -name '*.sh' -print0 \
+            | xargs -0 -n1 bash -n
+
+      - name: ShellCheck
+        run: |
+          find . -path ./.git -prune -o -name '*.sh' -print0 \
+            | xargs -0 shellcheck -x -S warning
+
+      - name: Smoke tests
+        run: |
+          ./install.sh --version
+          ./install.sh -h >/dev/null

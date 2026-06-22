@@ -3,7 +3,7 @@
 ################################################################################
 #
 # Docker 自动安装脚本
-# 版本: v3.5.0
+# 版本: v4.0.0
 #
 # 功能说明：
 #   1. 检测 Docker 是否已安装，已安装则确保服务运行
@@ -99,6 +99,35 @@ fix_apt_sources() {
 
 # ==================== Docker 安装核心函数 ====================
 
+ensure_docker_compose() {
+    local compose_cmd
+    compose_cmd=$(detect_compose_cmd)
+    if [ -n "$compose_cmd" ]; then
+        log_success "Docker Compose 已就绪 ($compose_cmd)"
+        return 0
+    fi
+
+    log_warning "未检测到 Docker Compose，尝试安装 Compose 插件..."
+
+    if command -v apt-get &>/dev/null; then
+        apt-get update -qq || true
+        apt-get install -y docker-compose-plugin || true
+    elif command -v yum &>/dev/null; then
+        yum install -y docker-compose-plugin || true
+    elif command -v dnf &>/dev/null; then
+        dnf install -y docker-compose-plugin || true
+    fi
+
+    compose_cmd=$(detect_compose_cmd)
+    if [ -n "$compose_cmd" ]; then
+        log_success "Docker Compose 安装完成 ($compose_cmd)"
+        return 0
+    fi
+
+    log_error "Docker Compose 安装失败，请手动安装 docker-compose-plugin。"
+    return 1
+}
+
 ensure_docker() {
     # 已安装：检查版本并确保服务运行
     if command -v docker &> /dev/null; then
@@ -111,7 +140,8 @@ ensure_docker() {
             systemctl start docker
             systemctl enable docker
         fi
-        return 0
+        ensure_docker_compose
+        return $?
     fi
 
     log_step "安装 Docker..."
@@ -133,7 +163,8 @@ ensure_docker() {
             systemctl start docker
             systemctl enable docker
             log_success "Docker 安装成功"
-            return 0
+            ensure_docker_compose
+            return $?
         else
             log_warning "官方脚本安装失败，尝试手动安装..."
             rm -f /tmp/get-docker.sh
@@ -182,7 +213,8 @@ ensure_docker() {
     if command -v docker &> /dev/null; then
         log_success "Docker 安装成功"
         docker --version
-        return 0
+        ensure_docker_compose
+        return $?
     else
         log_error "Docker 安装失败"
         echo -e "${YELLOW}请手动安装 Docker: https://docs.docker.com/engine/install/${NC}"
@@ -205,7 +237,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     for arg in "$@"; do
         case "$arg" in
             -h|--help)
-                echo "Docker 自动安装脚本 v${COMMON_VERSION:-3.5.0}"
+                echo "Docker 自动安装脚本 v${COMMON_VERSION:-4.0.0}"
                 echo ""
                 echo "用法:"
                 echo "  ./install_docker.sh       # 安装 Docker"
@@ -219,7 +251,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     done
 
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${CYAN}   Docker 自动安装程序 v${COMMON_VERSION:-3.5.0}${NC}"
+    echo -e "${CYAN}   Docker 自动安装程序 v${COMMON_VERSION:-4.0.0}${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 

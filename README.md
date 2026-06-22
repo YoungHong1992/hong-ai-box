@@ -1,7 +1,7 @@
 # hongaibox — 洪哥的 AI 工具箱
 
 > **版本**: v4.0.0
-> **更新日期**: 2026-06-10
+> **更新日期**: 2026-06-22
 > **许可证**: MIT
 
 一套面向云服务器的 AI 工具自动化部署脚本，选择服务 → 填写配置 → 一键安装，三步完成整套 AI 集群的部署。
@@ -26,12 +26,22 @@
 curl -fsSL https://raw.githubusercontent.com/YoungHong1992/hong-ai-box/main/install.sh | sudo bash
 ```
 
+> 该命令会先下载完整仓库到临时目录，再启动交互式安装；如需固定版本，可改用 release 页面中的 tag 命令。
+
+### 下载完整包安装
+
+```bash
+curl -fsSLO https://github.com/YoungHong1992/hong-ai-box/releases/latest/download/hong-ai-box.tar.gz
+tar xzf hong-ai-box.tar.gz
+cd hong-ai-box
+sudo ./install.sh
+```
+
 ### 克隆仓库安装
 
 ```bash
 git clone https://github.com/YoungHong1992/hong-ai-box.git
 cd hong-ai-box
-chmod +x install.sh
 sudo ./install.sh
 ```
 
@@ -92,6 +102,8 @@ hong-ai-box/
 6. 完成 → 显示总结和常用管理命令
 ```
 
+> 同时部署 CliproxyAPI 与 New-API 时，请为每个 Web 服务准备独立域名，避免多个服务争用同一个 Nginx `server_name` 和 `/` 路由。
+
 ---
 
 ## 🔒 安全说明
@@ -112,13 +124,13 @@ hong-ai-box/
 # 安装 shellcheck
 apt-get install -y shellcheck
 
-# 检查所有脚本
-find scripts -name '*.sh' -exec shellcheck {} +
+# 语法检查
+find . -path ./.git -prune -o -name '*.sh' -print0 | xargs -0 -n1 bash -n
 
-# 检查 install.sh
-shellcheck install.sh
+# ShellCheck
+find . -path ./.git -prune -o -name '*.sh' -print0 | xargs -0 shellcheck -x -S warning
 ```
 
 ---
 
-**最后更新**: 2026-06-10
+**最后更新**: 2026-06-22

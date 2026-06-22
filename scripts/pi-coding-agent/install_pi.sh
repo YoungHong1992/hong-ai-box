@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Pi Coding Agent 安装脚本
-# 版本: v3.5.0
+# 版本: v4.0.0
 # 更新日期: 2026-06-08
 # 依赖: Node.js >= 18 (脚本会自动安装)
 #
@@ -42,7 +42,7 @@ EOF
 
 # ==================== 参数解析 ====================
 NO_PROMPT=false
-if [ "${HONGAIBOX_UNATTENDED:-}" = "1" ]; then
+if [ "${HONGAIBOX_UNATTENDED:-}" = "1" ] || [ "${HONGAIBOX_NO_PROMPT:-}" = "1" ]; then
     NO_PROMPT=true
 fi
 for arg in "$@"; do
@@ -73,15 +73,23 @@ log_step "Step 1/2: 检测 Node.js..."
 
 if command -v node &>/dev/null; then
     NODE_VERSION=$(node --version | sed 's/v//')
-    log_success "Node.js 已安装 (v${NODE_VERSION})"
+    NODE_MAJOR="${NODE_VERSION%%.*}"
+    if [[ "$NODE_MAJOR" =~ ^[0-9]+$ ]] && [ "$NODE_MAJOR" -ge 18 ]; then
+        log_success "Node.js 已安装 (v${NODE_VERSION})"
+    else
+        log_warning "Node.js 版本过低 (v${NODE_VERSION})，升级到 v22 LTS..."
+        curl -fsSL --connect-timeout 30 https://deb.nodesource.com/setup_22.x | bash - || { log_error "Node.js 安装失败"; exit 1; }
+        apt-get install -y nodejs
+    fi
 else
     log_info "安装 Node.js v22 LTS..."
     curl -fsSL --connect-timeout 30 https://deb.nodesource.com/setup_22.x | bash - || { log_error "Node.js 安装失败"; exit 1; }
     apt-get install -y nodejs
-    echo ""
-    log_success "Node.js 安装完成: $(node --version)"
-    log_info "npm 版本: $(npm --version)"
 fi
+
+echo ""
+log_success "Node.js 就绪: $(node --version)"
+log_info "npm 版本: $(npm --version)"
 
 # === Step 2: 安装 Pi ===
 log_step "Step 2/2: 安装 Pi Coding Agent..."

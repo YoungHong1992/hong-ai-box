@@ -36,3 +36,32 @@ backup_file() {
         log_info "已备份: $backup"
     fi
 }
+
+find_nginx_conf_by_server_name() {
+    local domain="$1"
+    local conf_dir="${2:-/etc/nginx/conf.d}"
+    local conf
+
+    [ -d "$conf_dir" ] || return 1
+
+    while IFS= read -r -d '' conf; do
+        if awk -v domain="$domain" '
+            {
+                for (i = 1; i <= NF; i++) {
+                    token = $i
+                    gsub(/[{};]/, "", token)
+
+                    if (in_server_name && token == domain) found = 1
+                    if (in_server_name && $i ~ /;/) in_server_name = 0
+                    if (token == "server_name") in_server_name = 1
+                }
+            }
+            END { exit found ? 0 : 1 }
+        ' "$conf"; then
+            echo "$conf"
+            return 0
+        fi
+    done < <(find "$conf_dir" -maxdepth 1 -type f -name "*.conf" -print0 2>/dev/null)
+
+    return 1
+}
