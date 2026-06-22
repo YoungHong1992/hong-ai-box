@@ -3,25 +3,21 @@
 
 ################################################################################
 #
-# VLESS + Reality 一键部署脚本 (Xray-core)
-#
+# Nginx 安装与系统优化脚本
 # 版本: v4.0.0
-# 功能:
-#   1. 下载并安装 Xray-core 最新版
-#   2. 自动生成 X25519 密钥对
-#   3. 配置 VLESS + Reality (伪装: www.microsoft.com)
-#   4. 默认端口 8443 (不冲突现有 Nginx 443)
-#   5. 下载 geoip.dat / geosite.dat
-#   6. 开启 BBR 加速
 #
-# 用法:
-#   ./install_science.sh           # 交互式部署
-#   ./install_science.sh -h        # 显示帮助
+# 功能说明：
+#   1. 系统内核优化：开启 BBR、优化 TCP 连接、提升文件描述符限制
+#   2. 通过 nginx.org 官方仓库安装最新主线版（支持 HTTP/3）
+#   3. 配置高并发优化
 #
-# 前置条件:
-#   - Root 权限
-#   - 境外 VPS (Debian/Ubuntu/CentOS)
-#   - 无需域名 / 无需 SSL 证书
+# 适用环境：
+#   - Ubuntu 20.04+ / Debian 11+
+#
+# 使用方法：
+#   chmod +x install.sh
+#   ./install.sh          # 安装
+#   ./install.sh -h       # 显示帮助
 #
 ################################################################################
 
@@ -270,7 +266,9 @@ NGINX_TEMP
             mkdir -p /var/www/acme
             chmod 755 /var/www/acme
             if [ -f "$default_site" ]; then
-                mv "$default_site" "$default_backup" 2>/dev/null && default_moved=true || true
+                if mv "$default_site" "$default_backup" 2>/dev/null; then
+                    default_moved=true
+                fi
             fi
             systemctl reload nginx >/dev/null 2>&1 || true
 
@@ -337,6 +335,8 @@ readonly NGINX_SSL_CONFIG='
     ssl_session_timeout 10m;
     add_header Strict-Transport-Security "max-age=31536000" always;'
 
+# Nginx variables are intentionally kept literal in this config snippet.
+# shellcheck disable=SC2016
 readonly NGINX_REDIRECT_LOGIC='
     set $isRedcert 1;
     if ($server_port != 443) {
@@ -613,297 +613,319 @@ get_domain_for_mode() {
 # ==================== 帮助信息 ====================
 show_help() {
     cat <<'EOF'
-VLESS + Reality 一键部署脚本
+Nginx 安装与系统优化脚本
 
 用法:
-  ./install_science.sh              # 交互式部署
-  ./install_science.sh -h           # 显示此帮助
+  ./install.sh             # 安装 Nginx + 系统优化
+  ./install.sh --force     # 强制重装/覆盖配置
+  ./install.sh -h          # 显示此帮助
 
-环境变量 (可选):
-  DEST_SNI=www.example.com    # 伪装目标 (默认: www.microsoft.com)
-  REALITY_PORT=8443           # 监听端口 (默认: 8443)
-  INFO_FILE=/path/to/info     # 信息输出文件
+功能:
+  - 开启 TCP BBR 拥塞控制
+  - 优化系统内核参数
+  - 从 nginx.org 官方主线仓库安装 Nginx (含 HTTP/3)
+  - 配置高并发优化
 
-说明:
-  - 自动下载 Xray-core 最新版
-  - 生成 X25519 密钥对
-  - 配置 VLESS + XTLS-Vision + Reality
-  - 开启 TCP BBR 加速
+支持系统: Ubuntu 20.04+, Debian 11+
 EOF
     exit 0
 }
 
-# ==================== 参数解析 ====================
+FORCE_INSTALL=false
 for arg in "$@"; do
     case "$arg" in
         -h|--help) show_help ;;
+        --force|--reinstall) FORCE_INSTALL=true ;;
+        *) ;;
     esac
 done
 
 # ==================== 全局配置 ====================
-# HONGAIBOX_* variables take precedence over legacy DEST_SNI/REALITY_PORT.
-DEST_SNI="${HONGAIBOX_DEST_SNI:-${DEST_SNI:-www.microsoft.com}}"
-REALITY_PORT="${HONGAIBOX_REALITY_PORT:-${REALITY_PORT:-8443}}"
-XRAY_DIR="/usr/local/etc/xray"
-INFO_FILE="${INFO_FILE:-$(dirname "$(readlink -f "$0")")/reality_node_info.txt}"
+
+NGINX_CONF_DIR="/etc/nginx"
+NGINX_SSL_DIR="$NGINX_CONF_DIR/ssl"
+NGINX_USER="nginx"
+NGINX_GROUP="nginx"
+
+ensure_nginx_runtime_user() {
+    local nologin_shell="/usr/sbin/nologin"
+    [ -x "$nologin_shell" ] || nologin_shell="/sbin/nologin"
+
+    if ! getent group "$NGINX_GROUP" >/dev/null 2>&1; then
+        groupadd --system "$NGINX_GROUP"
+    fi
+
+    if ! id -u "$NGINX_USER" >/dev/null 2>&1; then
+        useradd --system --no-create-home --shell "$nologin_shell" --gid "$NGINX_GROUP" "$NGINX_USER"
+    fi
+}
+
+configure_systemd_limits() {
+    local override_dir="/etc/systemd/system/nginx.service.d"
+    mkdir -p "$override_dir"
+    cat > "$override_dir/limits.conf" <<'SYSTEMD_EOF'
+[Service]
+LimitNOFILE=65535
+SYSTEMD_EOF
+    systemctl daemon-reload
+    log_success "systemd 文件描述符限制已配置 (LimitNOFILE=65535)"
+}
+
+prepare_nginx_directories() {
+    mkdir -p "$NGINX_SSL_DIR" /var/log/nginx
+    chown -R root:root "$NGINX_SSL_DIR"
+    chmod 755 "$NGINX_SSL_DIR"
+
+    find "$NGINX_SSL_DIR" -type d -exec chmod 755 {} + 2>/dev/null || true
+    find "$NGINX_SSL_DIR" -type f -name 'key.pem' -exec chmod 600 {} + 2>/dev/null || true
+    find "$NGINX_SSL_DIR" -type f -name 'fullchain.pem' -exec chmod 644 {} + 2>/dev/null || true
+
+    chown root:root /var/log/nginx
+    chmod 755 /var/log/nginx
+
+    mkdir -p \
+        /var/cache/nginx/client_temp \
+        /var/cache/nginx/proxy_temp \
+        /var/cache/nginx/fastcgi_temp \
+        /var/cache/nginx/uwsgi_temp \
+        /var/cache/nginx/scgi_temp
+    chown -R "$NGINX_USER:$NGINX_GROUP" /var/cache/nginx
+}
+
+nginx_is_healthy() {
+    command -v nginx >/dev/null 2>&1 \
+        && nginx -t >/dev/null 2>&1 \
+        && systemctl is-active --quiet nginx 2>/dev/null
+}
+
+handle_existing_nginx() {
+    command -v nginx >/dev/null 2>&1 || return 0
+
+    if nginx -t >/dev/null 2>&1 && ! systemctl is-active --quiet nginx 2>/dev/null; then
+        log_warning "检测到 Nginx 已安装但未运行，尝试启动..."
+        systemctl enable nginx >/dev/null 2>&1 || true
+        systemctl start nginx >/dev/null 2>&1 || true
+    fi
+
+    if ! nginx_is_healthy; then
+        log_warning "检测到已有 Nginx，但当前状态不完整，将继续执行安装/修复流程。"
+        return 0
+    fi
+
+    log_success "检测到 Nginx 已安装且运行正常。"
+
+    if [ "$FORCE_INSTALL" = true ]; then
+        log_warning "已指定 --force，将继续重装并覆盖主配置。"
+        return 0
+    fi
+
+    if is_noninteractive; then
+        log_info "非交互模式下跳过 Nginx 重装；如需覆盖配置，请直接运行 nginx/install.sh --force。"
+        exit 0
+    fi
+
+    if confirm "是否重新安装并覆盖 /etc/nginx/nginx.conf？" "n"; then
+        log_warning "继续执行重装/覆盖配置流程。"
+        return 0
+    fi
+
+    log_info "已跳过 Nginx 重装。"
+    exit 0
+}
 
 # ==================== 部署流程 ====================
 check_root
-setup_logging "science-setup"
+setup_logging "nginx-install"
+handle_existing_nginx
 
-ensure_commands curl unzip openssl
-validate_sni "$DEST_SNI" || exit 1
-validate_port "$REALITY_PORT" || exit 1
-if ! systemctl is-active --quiet xray 2>/dev/null; then
-    ensure_port_available "$REALITY_PORT" "Xray Reality"
-fi
+log_step "[1/3] 系统环境检查与优化..."
 
-print_header "VLESS + Reality 部署"
+# 1. 内核参数优化 (开启 BBR + TCP 调优)
+log_info "优化 sysctl.conf..."
+cat > /etc/sysctl.d/99-vps-optimize.conf <<'SYSCTL_EOF'
+# --- BBR 拥塞控制 ---
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
 
-echo -e "服务器 IP: ${GREEN}$(detect_server_ip)${NC}"
-echo ""
+# --- TCP 优化 ---
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_fin_timeout = 30
+net.ipv4.tcp_keepalive_time = 1200
+net.ipv4.ip_local_port_range = 10000 65000
+net.ipv4.tcp_max_syn_backlog = 8192
+net.ipv4.tcp_max_tw_buckets = 5000
+net.ipv4.tcp_fastopen = 3
+net.core.somaxconn = 32768
+net.core.netdev_max_backlog = 8192
 
-# ==================== 步骤 1: 安装 Xray-core ====================
+# --- 文件描述符 ---
+fs.file-max = 1000000
+SYSCTL_EOF
 
-log_step "[1/6] 下载安装 Xray-core..."
+# 应用内核参数
+sysctl -p /etc/sysctl.d/99-vps-optimize.conf > /dev/null 2>&1 || true
 
-if ! command -v xray &>/dev/null; then
-    XRAY_VERSION=$(curl -sL --connect-timeout 10 \
-        -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/repos/XTLS/Xray-core/releases/latest" 2>/dev/null \
-        | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1) || true
-    [ -z "$XRAY_VERSION" ] && XRAY_VERSION="v26.3.27"
-    log_info "版本: $XRAY_VERSION"
-
-    XRAY_ARCH=$(detect_arch)
-    case "$XRAY_ARCH" in
-        linux_amd64)   XRAY_ARCH="linux-64" ;;
-        linux_arm64)   XRAY_ARCH="linux-arm64-v8a" ;;
-        linux_arm32*)  XRAY_ARCH="linux-arm32-v7a" ;;
-        *) log_error "不支持架构: $(uname -m)"; exit 1 ;;
-    esac
-
-    DOWNLOAD_URL="https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/Xray-${XRAY_ARCH}.zip"
-
-    log_info "下载: $DOWNLOAD_URL"
-    cd /tmp
-    rm -f xray.zip
-    curl -L --connect-timeout 60 -o xray.zip "$DOWNLOAD_URL" || {
-        log_error "下载失败"
-        exit 1
-    }
-
-    unzip -o xray.zip >/dev/null 2>&1 || { log_error "解压 Xray 失败"; exit 1; }
-    cp xray /usr/local/bin/
-    chmod +x /usr/local/bin/xray
-
-    # Systemd 服务
-    cat > /etc/systemd/system/xray.service <<'SVC'
-[Unit]
-Description=Xray Service
-After=network.target
-[Service]
-Type=simple
-User=root
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
-AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
-NoNewPrivileges=true
-ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
-Restart=on-failure
-RestartSec=3
-LimitNOFILE=65535
-[Install]
-WantedBy=multi-user.target
-SVC
-    systemctl daemon-reload
-fi
-
-log_success "Xray-core 就绪"
-/usr/local/bin/xray version 2>/dev/null | head -1 || true
-
-# ==================== 步骤 2: 生成密钥 ====================
-
-log_step "[2/6] 生成 X25519 密钥对..."
-
-KEYS=$(/usr/local/bin/xray x25519 2>/dev/null) || true
-PRIVATE_KEY=$(echo "$KEYS" | grep "^PrivateKey:" | awk '{print $NF}') || true
-PUBLIC_KEY=$(echo "$KEYS" | grep "^Password (PublicKey):" | awk '{print $NF}') || true
-SHORT_ID=$(openssl rand -hex 8 2>/dev/null || head -c 8 /dev/urandom | xxd -p 2>/dev/null || tr -dc 'a-f0-9' < /dev/urandom | head -c 16)
-UUID=$(cat /proc/sys/kernel/random/uuid)
-
-if [ -z "$PRIVATE_KEY" ] || [ -z "$PUBLIC_KEY" ]; then
-    log_error "密钥生成失败"
-    exit 1
-fi
-
-echo -e "  Private: ${YELLOW}$PRIVATE_KEY${NC}"
-echo -e "  Public:  ${YELLOW}$PUBLIC_KEY${NC}"
-echo -e "  shortId: ${YELLOW}$SHORT_ID${NC}"
-echo -e "  UUID:    ${YELLOW}$UUID${NC}"
-
-# ==================== 步骤 3: 下载 geo 数据 ====================
-
-log_step "[3/6] 下载 geoip/geosite 数据..."
-
-cd /usr/local/bin
-curl -sL --connect-timeout 30 -o geoip.dat \
-    "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat" &
-PID1=$!
-curl -sL --connect-timeout 30 -o geosite.dat \
-    "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" &
-PID2=$!
-wait $PID1 2>/dev/null || true
-wait $PID2 2>/dev/null || true
-log_success "geo 数据就绪"
-
-# ==================== 步骤 4: 生成配置 ====================
-
-log_step "[4/6] 配置 Xray Reality..."
-
-mkdir -p "$XRAY_DIR" /var/log/xray
-
-cat > "$XRAY_DIR/config.json" <<XEOF
-{
-  "log": {
-    "loglevel": "warning",
-    "access": "/var/log/xray/access.log",
-    "error": "/var/log/xray/error.log"
-  },
-  "inbounds": [{
-    "port": $REALITY_PORT,
-    "protocol": "vless",
-    "settings": {
-      "clients": [{
-        "id": "$UUID",
-        "flow": "xtls-rprx-vision"
-      }],
-      "decryption": "none"
-    },
-    "streamSettings": {
-      "network": "tcp",
-      "security": "reality",
-      "realitySettings": {
-        "show": false,
-        "dest": "$DEST_SNI:443",
-        "xver": 0,
-        "serverNames": ["$DEST_SNI"],
-        "privateKey": "$PRIVATE_KEY",
-        "shortIds": ["$SHORT_ID"]
-      }
-    }
-  }],
-  "outbounds": [{
-    "protocol": "freedom",
-    "tag": "direct"
-  }]
-}
-XEOF
-
-log_success "配置完成"
-
-# ==================== 步骤 5: 启动 ====================
-
-log_step "[5/6] 启动 Xray 服务..."
-
-systemctl daemon-reload
-systemctl enable xray 2>/dev/null || true
-systemctl restart xray || true
-sleep 2
-
-if systemctl is-active --quiet xray; then
-    log_success "Xray 运行中"
-    ss -tlnp 2>/dev/null | grep ":$REALITY_PORT" || true
+# 验证 BBR
+BBR_STATUS=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || true)
+if [ "$BBR_STATUS" = "bbr" ]; then
+    BBR_SUMMARY="BBR 已开启"
+    log_success "TCP BBR 已成功开启"
 else
-    log_error "启动失败，日志:"
-    journalctl -u xray -n 15 --no-pager || true
+    BBR_SUMMARY="BBR 未开启"
+    log_warning "BBR 开启失败，请检查内核版本 (建议 >= 4.9)"
+fi
+
+# 2. 提升系统级文件描述符限制
+if ! grep -q "soft nofile 65535" /etc/security/limits.conf 2>/dev/null; then
+    {
+        echo "* soft nofile 65535"
+        echo "* hard nofile 65535"
+        echo "root soft nofile 65535"
+        echo "root hard nofile 65535"
+    } >> /etc/security/limits.conf
+fi
+
+# 3. systemd 文件描述符限制会在 Nginx 安装后写入服务 override
+
+# ==================== 步骤 2: 安装 Nginx ====================
+
+log_step "[2/3] 安装 Nginx (nginx.org 官方主线包)..."
+
+# 检测系统并添加 nginx.org 官方仓库
+if [ -f /etc/debian_version ]; then
+    # 安装必要依赖（curl 已存在时也要确保 gpg/证书工具存在）
+    apt-get update -y -qq
+    apt-get install -y -qq curl gnupg2 ca-certificates lsb-release
+
+    # 添加 nginx.org GPG key
+    curl -fsSL --connect-timeout 30 https://nginx.org/keys/nginx_signing.key \
+        | gpg --dearmor --yes -o /usr/share/keyrings/nginx-archive-keyring.gpg
+
+    # 添加 mainline 仓库（支持 HTTP/3）
+    . /etc/os-release
+    if [ "$ID" = "debian" ] && [ -z "${VERSION_CODENAME:-}" ]; then
+        VERSION_CODENAME=$(lsb_release -cs 2>/dev/null || echo "bookworm")
+    fi
+    echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] \
+http://nginx.org/packages/mainline/${ID}/ ${VERSION_CODENAME} nginx" \
+        > /etc/apt/sources.list.d/nginx.list
+
+    # 优先使用 nginx.org 仓库
+    cat > /etc/apt/preferences.d/99nginx <<'APT_PREF_EOF'
+Package: nginx*
+Pin: origin nginx.org
+Pin-Priority: 900
+APT_PREF_EOF
+
+    apt-get update -y -qq
+    apt-get install -y nginx
+
+    log_success "Nginx 安装完成"
+
+elif [ -f /etc/redhat-release ]; then
+    log_error "CentOS / RHEL 不在本脚本的支持范围内。"
+    log_info "请使用 Ubuntu 20.04+ 或 Debian 11+。"
+    log_info "对于 RHEL 系列，请参考 nginx.org 官方文档手动安装。"
+    exit 1
+else
+    log_error "不支持的操作系统。"
     exit 1
 fi
 
-# ==================== 步骤 6: BBR ====================
+# 确保运行用户和 systemd 限制
+ensure_nginx_runtime_user
+configure_systemd_limits
 
-log_step "[6/6] 系统优化 (BBR)..."
-
-modprobe tcp_bbr 2>/dev/null || true
-if ! grep -q "tcp_congestion_control=bbr" /etc/sysctl.conf 2>/dev/null; then
-    echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
-    echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-    sysctl -p >/dev/null 2>&1 || true
+# 验证 HTTP/3 模块
+if nginx -V 2>&1 | grep -q "http_v3_module"; then
+    log_success "HTTP/3 (QUIC) 模块已就绪"
+else
+    log_warning "当前 Nginx 未包含 HTTP/3 模块"
 fi
-log_success "BBR 就绪"
 
-# ==================== 输出结果 ====================
+# ==================== 步骤 3: 配置 Nginx ====================
 
-SERVER_IP=$(detect_server_ip)
-VLESS_LINK="vless://$UUID@$SERVER_IP:$REALITY_PORT?type=tcp&security=reality&flow=xtls-rprx-vision&fp=chrome&sni=$DEST_SNI&pbk=$PUBLIC_KEY&sid=$SHORT_ID#MeiDe_Reality"
+log_step "[3/3] 配置 Nginx 高并发优化..."
 
-cat > "$INFO_FILE" <<EOF
-================================================
-     VLESS + Reality 节点配置
-================================================
-部署时间: $(date '+%Y-%m-%d %H:%M:%S')
-伪装目标: $DEST_SNI
-服务器:   $SERVER_IP
-端口:     $REALITY_PORT
+# 备份已有配置
+if [ -f "$NGINX_CONF_DIR/nginx.conf" ]; then
+    backup_file "$NGINX_CONF_DIR/nginx.conf"
+fi
 
-[连接参数]
-协议:      VLESS
-地址:      $SERVER_IP
-端口:      $REALITY_PORT
-UUID:      $UUID
-Flow:      xtls-rprx-vision
-传输:      tcp
-安全:      reality
-公钥:      $PUBLIC_KEY
-SNI:       $DEST_SNI
-Fingerprint: chrome
-shortId:   $SHORT_ID
+# 创建运行目录、缓存目录、日志目录和 SSL 证书目录
+prepare_nginx_directories
 
-[分享链接]
-$VLESS_LINK
+# 生成 nginx.conf（高并发调优 + 模块化站点配置）
+cat > "$NGINX_CONF_DIR/nginx.conf" <<NGINX_EOF
+user  $NGINX_USER;
+worker_processes  auto;
+worker_rlimit_nofile 65535;
 
-[Clash Meta 订阅格式]
-  - name: "MeiDe_Reality"
-    type: vless
-    server: $SERVER_IP
-    port: $REALITY_PORT
-    uuid: $UUID
-    flow: xtls-rprx-vision
-    tls: true
-    network: tcp
-    servername: $DEST_SNI
-    reality-opts:
-      public-key: $PUBLIC_KEY
-      short-id: $SHORT_ID
-    client-fingerprint: chrome
+error_log  /var/log/nginx/error.log warn;
+pid        /run/nginx.pid;
 
-[服务管理]
-启动: systemctl start xray
-停止: systemctl stop xray
-重启: systemctl restart xray
-查看: systemctl status xray
-日志: journalctl -u xray -f
+events {
+    worker_connections  10240;
+    use epoll;
+    multi_accept on;
+}
 
-[卸载]
-systemctl stop xray && systemctl disable xray
-rm -rf /usr/local/bin/xray /usr/local/etc/xray /var/log/xray
-rm -f /etc/systemd/system/xray.service /usr/local/bin/*.dat
-systemctl daemon-reload
-================================================
-EOF
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
 
+    log_format  main  '\$remote_addr - \$remote_user [\$time_local] "\$request" '
+                      '\$status \$body_bytes_sent "\$http_referer" '
+                      '"\$http_user_agent" "\$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile        on;
+    tcp_nopush      on;
+    tcp_nodelay     on;
+    keepalive_timeout  65;
+    types_hash_max_size 2048;
+    server_tokens   off;
+
+    gzip on;
+    gzip_min_length 1k;
+    gzip_comp_level 4;
+    gzip_types text/plain text/css application/json application/javascript application/xml;
+
+    # 加载模块化站点配置
+    include /etc/nginx/conf.d/*.conf;
+}
+NGINX_EOF
+
+# 测试配置并启动
+if nginx -t; then
+    systemctl enable nginx
+    if systemctl restart nginx; then
+        log_success "Nginx 配置测试通过，服务已启动"
+    else
+        log_error "Nginx 服务启动失败，请检查: journalctl -xe -u nginx"
+        exit 1
+    fi
+else
+    log_error "Nginx 配置测试失败，请检查"
+    exit 1
+fi
+
+# ==================== 输出安装摘要 ====================
+
+NGINX_VERSION=$(nginx -v 2>&1 | grep -oP 'nginx/\K[0-9.]+' || echo "unknown")
 echo ""
-echo -e "${BOLD}${GREEN}"
-echo "========================================"
-echo "   VLESS + Reality 部署完成！"
-echo "========================================"
-echo -e "${NC}"
-echo ""
-echo -e "伪装: ${GREEN}$DEST_SNI${NC}"
-echo -e "端口: ${GREEN}$REALITY_PORT${NC}"
-echo ""
-echo -e "${CYAN}▸ 分享链接:${NC}"
-echo -e "${BOLD}$VLESS_LINK${NC}"
-echo ""
-echo -e "详情: ${YELLOW}$INFO_FILE${NC}"
+echo -e "${GREEN}==============================================${NC}"
+echo -e "${GREEN}   Nginx 安装与系统优化完成${NC}"
+echo -e "${GREEN}==============================================${NC}"
+echo -e "版本:         ${GREEN}v${COMMON_VERSION}${NC}"
+echo -e "Nginx 版本:   ${YELLOW}$NGINX_VERSION${NC}"
+echo -e "安装来源:     ${YELLOW}nginx.org 官方主线仓库${NC}"
+echo -e "配置文件:     ${YELLOW}/etc/nginx/nginx.conf${NC}"
+echo -e "站点配置:     ${YELLOW}/etc/nginx/conf.d/*.conf${NC}"
+echo -e "SSL 证书:     ${YELLOW}/etc/nginx/ssl/${NC}"
+echo -e "优化状态:     ${GREEN}${BBR_SUMMARY}, systemd LimitNOFILE=65535${NC}"
+echo -e "HTTP/3 支持:  ${GREEN}$(detect_nginx_http3 && echo '✓' || echo '✗')${NC}"
+echo -e "${GREEN}==============================================${NC}"
 echo ""
 log_success "日志已保存: $DEPLOY_LOG_FILE"

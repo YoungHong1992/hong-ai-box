@@ -7,10 +7,10 @@
 # 依赖: Node.js >= 18 (脚本会自动安装)
 #
 # 用法:
-#   chmod +x install_pi.sh
-#   ./install_pi.sh              # 交互式安装
-#   ./install_pi.sh -h           # 显示帮助
-#   ./install_pi.sh --no-prompt  # 非交互式安装
+#   chmod +x install.sh
+#   ./install.sh              # 交互式安装
+#   ./install.sh -h           # 显示帮助
+#   ./install.sh --no-prompt  # 非交互式安装
 #
 
 set -euo pipefail
@@ -604,9 +604,9 @@ show_help() {
 Pi Coding Agent 安装脚本
 
 用法:
-  ./install_pi.sh              # 交互式安装
-  ./install_pi.sh --no-prompt  # 非交互式安装（跳过确认）
-  ./install_pi.sh -h           # 显示此帮助
+  ./install.sh              # 交互式安装
+  ./install.sh --no-prompt  # 非交互式安装（跳过确认）
+  ./install.sh -h           # 显示此帮助
 
 说明:
   1. 检测并安装 Node.js (v22 LTS)

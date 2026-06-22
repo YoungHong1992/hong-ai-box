@@ -1,7 +1,7 @@
 # Nginx 部署指南（支持 HTTP/3）
 
-> **版本**: v5.0
-> **更新日期**: 2026-05-27
+> **版本**: v4.0.0
+> **更新日期**: 2026-06-22
 > **Nginx 来源**: nginx.org 官方主线仓库（支持 HTTP/3 QUIC 协议）
 > **适用场景**: VPS 集群基础设施部署
 
@@ -80,8 +80,9 @@
 
 ```bash
 cd nginx
-chmod +x install_nginx.sh
-sudo ./install_nginx.sh
+chmod +x install.sh
+sudo ./install.sh           # 已安装且运行正常时默认跳过
+sudo ./install.sh --force   # 强制重装并覆盖主配置
 ```
 
 **部署时间**: 约 30 秒（纯 apt 安装，无需编译）
@@ -112,6 +113,7 @@ sysctl net.ipv4.tcp_congestion_control
 ```
 [1/3] 系统环境检查与优化
       ├─ 检查 Root 权限
+      ├─ 检测已安装且健康的 Nginx（默认跳过，--force 可覆盖）
       ├─ 配置内核参数（BBR、TCP 优化）
       └─ 提升文件描述符限制
 
@@ -119,12 +121,13 @@ sysctl net.ipv4.tcp_congestion_control
       ├─ 添加 nginx.org GPG 签名密钥
       ├─ 添加主线仓库源
       ├─ apt install nginx
-      └─ 自动包含 HTTP/3 支持
+      ├─ 校验 nginx 运行用户
+      └─ 写入 systemd LimitNOFILE override
 
 [3/3] 配置 Nginx 高并发优化
       ├─ 生成 nginx.conf（高并发调优）
-      ├─ 创建 SSL 证书存储目录
-      └─ 启动并启用开机自启
+      ├─ 创建 SSL / 日志 / 缓存目录
+      └─ 测试配置并启动服务
 ```
 
 ### 输出结果
@@ -133,14 +136,15 @@ sysctl net.ipv4.tcp_congestion_control
 
 ```
 ==============================================
-   Nginx 安装与系统优化完成 (v5.0)
+   Nginx 安装与系统优化完成
 ==============================================
-Nginx 版本:   1.27.x
+版本:         v4.0.0
+Nginx 版本:   当前 nginx.org 主线版
 安装来源:     nginx.org 官方主线仓库
 配置文件:     /etc/nginx/nginx.conf
 站点配置:     /etc/nginx/conf.d/*.conf
 SSL 证书:     /etc/nginx/ssl/
-优化状态:     BBR 已开启, Limit 已提升
+优化状态:     BBR 已开启/未开启, systemd LimitNOFILE=65535
 HTTP/3 支持:  ✓ (内置 --with-http_v3_module)
 ==============================================
 ```
@@ -179,9 +183,13 @@ net.core.somaxconn = 32768        # 连接队列大小
 # /etc/security/limits.conf
 * soft nofile 65535
 * hard nofile 65535
+
+# /etc/systemd/system/nginx.service.d/limits.conf
+[Service]
+LimitNOFILE=65535
 ```
 
-支持 Nginx 的 `worker_connections 10240` 配置。
+支持 Nginx 的 `worker_connections 10240` 配置，并确保 systemd 启动的 Nginx 进程实际获得该限制。
 
 ---
 
@@ -286,8 +294,9 @@ cat /etc/logrotate.d/nginx
 ### 系统优化配置
 
 ```
-/etc/sysctl.d/99-vps-optimize.conf    # 内核参数
-/etc/security/limits.conf              # 文件描述符限制
+/etc/sysctl.d/99-vps-optimize.conf              # 内核参数
+/etc/security/limits.conf                        # 登录会话文件描述符限制
+/etc/systemd/system/nginx.service.d/limits.conf  # Nginx systemd 文件描述符限制
 ```
 
 ---
@@ -338,7 +347,8 @@ cat /var/log/nginx/error.log
 # 示例: 添加 api.example.com
 cat > /etc/nginx/conf.d/api.example.com.conf << 'EOF'
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name api.example.com;
 
     ssl_certificate /etc/nginx/ssl/api.example.com/fullchain.pem;
@@ -364,9 +374,9 @@ Nginx 部署完成后，可以继续部署以下服务：
 
 | 序号 | 服务 | 用途 | 部署命令 |
 |------|------|------|---------|
-| Docker | 容器运行环境 | `cd ../docker && sudo ./install_docker.sh` |
-| CliproxyAPI | AI API 转发 | `cd ../cliproxyapi && sudo ./install_cliproxyapi_v2.sh` |
-| New-API | AI 模型网关 | `cd ../new-api && sudo ./install_newapi_docker.sh` |
+| Docker | 容器运行环境 | `cd ../docker && sudo ./install.sh` |
+| CliproxyAPI | AI API 转发 | `cd ../cliproxyapi && sudo ./install.sh` |
+| New-API | AI 模型网关 | `cd ../new-api && sudo ./install.sh` |
 
 **完整部署流程**: 请参考根目录的 `install.sh` 脚本进行引导式部署。
 
@@ -375,7 +385,7 @@ Nginx 部署完成后，可以继续部署以下服务：
 ## 主配置文件核心参数
 
 ```nginx
-user  www;
+user  nginx;
 worker_processes  auto;           # 自动匹配 CPU 核心
 worker_rlimit_nofile 65535;       # 文件描述符限制
 
@@ -398,4 +408,4 @@ events {
 ---
 
 **文档维护**: AI Coding Assistant
-**最后更新**: 2026-05-27
+**最后更新**: 2026-06-22

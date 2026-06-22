@@ -658,7 +658,7 @@ check_root
 
 if ! command -v nginx &> /dev/null; then
     echo -e "${RED}错误: 未检测到 Nginx 安装。${NC}"
-    echo -e "请先安装 Nginx：进入仓库根目录的 nginx/ 目录运行 sudo ./install_nginx.sh，或使用根目录 sudo ./install.sh 选择 Nginx。"
+    echo -e "请先安装 Nginx：进入仓库根目录的 nginx/ 目录运行 sudo ./install.sh，或使用根目录 sudo ./install.sh 选择 Nginx。"
     exit 1
 fi
 
