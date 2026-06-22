@@ -22,7 +22,7 @@ jobs:
       - name: Bundle project
         run: |
           mkdir -p dist/hong-ai-box
-          cp -a install.sh scripts README.md docs LICENSE dist/hong-ai-box/
+          cp -a install.sh nginx docker cliproxyapi new-api pi-coding-agent science README.md docs LICENSE dist/hong-ai-box/
           tar czf hong-ai-box.tar.gz -C dist hong-ai-box
           sha256sum hong-ai-box.tar.gz > checksums.txt
 
@@ -58,7 +58,7 @@ jobs:
             sudo ./install.sh
             ```
 
-            ### 可用组件
+            ### 根目录 install.sh 可选组件
 
             | 组件 | 描述 | 资源需求 |
             |------|------|----------|
@@ -67,7 +67,8 @@ jobs:
             | CliproxyAPI | 轻量 AI API 转发代理 (~50MB) | 256MB 内存 |
             | New-API | AI 模型网关与资产管理系统 | ≥ 1GB 内存 |
             | Pi | 终端 AI 编程助手 | 500MB 磁盘 |
-            | Science | VLESS + XTLS-Vision + Reality | 极低 |
+
+            > Science 为可选网络工具，不包含在根目录 install.sh 菜单中；如有需要请手动进入 science/ 目录安装。
 
           files: |
             hong-ai-box.tar.gz

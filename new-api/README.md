@@ -17,13 +17,13 @@ New-API 是新一代大模型网关与 AI 资产管理系统，支持 OpenAI、C
 ```bash
 cd new-api
 chmod +x install_newapi_docker.sh
-./install_newapi_docker.sh
+sudo ./install_newapi_docker.sh
 ```
 
 ### 前置条件
 
-- 已部署 `nginx`
-- 已部署 `docker`
+- 已部署并启动 `nginx`（可先进入 `../nginx` 运行 `sudo ./install_nginx.sh`）
+- 已部署并启动 `docker` + Compose（可先进入 `../docker` 运行 `sudo ./install_docker.sh`）
 - 域名模式需 DNS 已解析
 
 ---
