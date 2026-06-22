@@ -96,7 +96,13 @@ bootstrap_full_repo() {
     tar -xzf "$archive_file" -C "$tmp_dir"
     root_dir="$(find "$tmp_dir" -mindepth 1 -maxdepth 1 -type d | head -1)"
 
-    if [ -z "$root_dir" ] || [ ! -f "$root_dir/install.sh" ] || [ ! -f "$root_dir/nginx/install_nginx.sh" ]; then
+    if [ -z "$root_dir" ] \
+        || [ ! -f "$root_dir/install.sh" ] \
+        || [ ! -f "$root_dir/nginx/install.sh" ] \
+        || [ ! -f "$root_dir/docker/install.sh" ] \
+        || [ ! -f "$root_dir/cliproxyapi/install.sh" ] \
+        || [ ! -f "$root_dir/new-api/install.sh" ] \
+        || [ ! -f "$root_dir/pi-coding-agent/install.sh" ]; then
         echo "[ERROR] 下载的安装包不完整。" >&2
         rm -rf "$tmp_dir"
         exit 1
@@ -118,9 +124,11 @@ bootstrap_full_repo() {
 }
 
 # ==================== 完整仓库检测 ====================
-if [ ! -f "$INSTALL_DIR/nginx/install_nginx.sh" ] \
-    || [ ! -f "$INSTALL_DIR/docker/install_docker.sh" ] \
-    || [ ! -f "$INSTALL_DIR/cliproxyapi/install_cliproxyapi_v2.sh" ]; then
+if [ ! -f "$INSTALL_DIR/nginx/install.sh" ] \
+    || [ ! -f "$INSTALL_DIR/docker/install.sh" ] \
+    || [ ! -f "$INSTALL_DIR/cliproxyapi/install.sh" ] \
+    || [ ! -f "$INSTALL_DIR/new-api/install.sh" ] \
+    || [ ! -f "$INSTALL_DIR/pi-coding-agent/install.sh" ]; then
     bootstrap_full_repo "$@"
 fi
 
@@ -761,31 +769,31 @@ declare -A SVC_NAME SVC_DESC SVC_HINT SVC_SCRIPT SVC_DEPENDS
 SVC_NAME[$SVC_NGINX]="Nginx (HTTP/3)"
 SVC_DESC[$SVC_NGINX]="Nginx 官方主线仓库安装，支持 HTTP/3 (QUIC)、TCP BBR 优化"
 SVC_HINT[$SVC_NGINX]="512MB 内存"
-SVC_SCRIPT[$SVC_NGINX]="$INSTALL_DIR/nginx/install_nginx.sh"
+SVC_SCRIPT[$SVC_NGINX]="$INSTALL_DIR/nginx/install.sh"
 SVC_DEPENDS[$SVC_NGINX]=""
 
 SVC_NAME[$SVC_DOCKER]="Docker 容器环境"
 SVC_DESC[$SVC_DOCKER]="Docker Engine + Docker Compose 插件"
 SVC_HINT[$SVC_DOCKER]="无额外需求"
-SVC_SCRIPT[$SVC_DOCKER]="$INSTALL_DIR/docker/install_docker.sh"
+SVC_SCRIPT[$SVC_DOCKER]="$INSTALL_DIR/docker/install.sh"
 SVC_DEPENDS[$SVC_DOCKER]=""
 
 SVC_NAME[$SVC_CLIPROXY]="CliproxyAPI"
 SVC_DESC[$SVC_CLIPROXY]="轻量 AI API 转发代理 (~50MB)，支持 OpenAI/Claude/Gemini"
 SVC_HINT[$SVC_CLIPROXY]="256MB 内存"
-SVC_SCRIPT[$SVC_CLIPROXY]="$INSTALL_DIR/cliproxyapi/install_cliproxyapi_v2.sh"
+SVC_SCRIPT[$SVC_CLIPROXY]="$INSTALL_DIR/cliproxyapi/install.sh"
 SVC_DEPENDS[$SVC_CLIPROXY]="$SVC_NGINX"
 
 SVC_NAME[$SVC_NEWAPI]="New-API"
 SVC_DESC[$SVC_NEWAPI]="AI 模型网关与资产管理系统，支持多模型聚合、计费、用户管理"
 SVC_HINT[$SVC_NEWAPI]="≥ 1GB 内存"
-SVC_SCRIPT[$SVC_NEWAPI]="$INSTALL_DIR/new-api/install_newapi_docker.sh"
+SVC_SCRIPT[$SVC_NEWAPI]="$INSTALL_DIR/new-api/install.sh"
 SVC_DEPENDS[$SVC_NEWAPI]="$SVC_NGINX $SVC_DOCKER"
 
 SVC_NAME[$SVC_PI]="Pi 编程助手"
 SVC_DESC[$SVC_PI]="极简终端 AI 编程助手，支持 Anthropic/OpenAI/Gemini/DeepSeek"
 SVC_HINT[$SVC_PI]="500MB 磁盘"
-SVC_SCRIPT[$SVC_PI]="$INSTALL_DIR/pi-coding-agent/install_pi.sh"
+SVC_SCRIPT[$SVC_PI]="$INSTALL_DIR/pi-coding-agent/install.sh"
 SVC_DEPENDS[$SVC_PI]=""
 
 # Ordered list for display
@@ -1294,16 +1302,10 @@ run_install() {
                 ;;
         esac
 
-        # Skip if already installed (e.g. dependency that was already present)
-        if [ "${ALREADY_INSTALLED[$svc]:-}" = "true" ]; then
-            log_info "$name 已安装，跳过"
-            INSTALL_RESULTS+=("✓ $name (已安装)")
-            echo ""
-            continue
-        fi
-
-        # Execute script directly (not via 'bash' to preserve $0 for scripts
-        # that use BASH_SOURCE==$0 guards, e.g. install_docker.sh)
+        # Component install.sh owns idempotency/repair/skip behavior.
+        # The root installer only resolves order and passes collected config.
+        # Execute component install.sh directly (not via 'bash') to preserve $0
+        # for scripts that use BASH_SOURCE==$0 guards.
         if env "${extra_env[@]}" "$script"; then
             log_success "$name 安装成功"
             INSTALL_RESULTS+=("✓ $name")

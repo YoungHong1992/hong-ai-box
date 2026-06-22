@@ -19,9 +19,9 @@
 #   - CentOS Stream 9 / Rocky / AlmaLinux / Fedora
 #
 # 使用方法：
-#   chmod +x install_docker.sh
-#   ./install_docker.sh          # 直接运行
-#   ./install_docker.sh -h       # 显示帮助
+#   chmod +x install.sh
+#   ./install.sh          # 直接运行
+#   ./install.sh -h       # 显示帮助
 #   # 本脚本自包含，可从 docker/ 目录直接运行
 #
 ################################################################################
@@ -801,7 +801,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     # 检查 root 权限
     if [ "$EUID" -ne 0 ]; then
         echo -e "${RED:-}[ERROR] 必须使用 root 权限运行此脚本。"
-        echo -e "${YELLOW:-}请使用: sudo ./install_docker.sh"
+        echo -e "${YELLOW:-}请使用: sudo ./install.sh"
         exit 1
     fi
 
@@ -812,8 +812,8 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
                 echo "Docker 自动安装脚本 v${COMMON_VERSION:-4.0.0}"
                 echo ""
                 echo "用法:"
-                echo "  ./install_docker.sh       # 安装 Docker"
-                echo "  ./install_docker.sh -h    # 显示此帮助"
+                echo "  ./install.sh       # 安装 Docker"
+                echo "  ./install.sh -h    # 显示此帮助"
                 echo "  # 本脚本自包含，可从 docker/ 目录直接运行"
                 echo ""
                 echo "支持系统: Ubuntu 20.04+, Debian 11+, CentOS Stream 9+"

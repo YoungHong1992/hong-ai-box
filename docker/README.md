@@ -1,7 +1,7 @@
 # Docker 自动安装指南
 
 > **版本**: v1.0
-> **更新日期**: 2026-02-23
+> **更新日期**: 2026-06-22
 > **适用场景**: VPS 集群 Docker 服务基础环境
 
 ---
@@ -65,8 +65,8 @@
 
 ```bash
 cd docker
-chmod +x install_docker.sh
-sudo ./install_docker.sh
+chmod +x install.sh
+sudo ./install.sh
 ```
 
 ### 验证安装
@@ -112,7 +112,7 @@ Docker 已安装？
 ### 方式一：直接运行
 
 ```bash
-sudo ./install_docker.sh
+sudo ./install.sh
 ```
 
 适用于独立安装 Docker 环境。
@@ -210,4 +210,4 @@ chmod +x /usr/local/bin/docker-compose
 ---
 
 **文档维护**: Claude Code
-**最后更新**: 2026-02-23
+**最后更新**: 2026-06-22

@@ -3,25 +3,26 @@
 
 ################################################################################
 #
-# New-API Docker 部署脚本
+# CliproxyAPI 智能安装/升级脚本
 # 版本: v4.0.0
 #
 # 功能说明：
-#   1. 部署 New-API AI 模型聚合管理系统（Docker 方式）
-#   2. 自动配置 PostgreSQL / MySQL 数据库
-#   3. 自动配置 Redis 缓存
-#   4. 自动申请 SSL 证书 / 自签名证书
-#   5. 自动配置 Nginx 反向代理
-#   6. 生成安全随机密码并保存到信息文件
+#   1. 自动检测是否已安装（智能判断全新安装 or 升级）
+#   2. 全新安装：完整的交互式配置流程
+#   3. 升级模式：保留所有配置，仅更新二进制文件
+#   4. 支持域名模式 / IP 模式 / HTTP 模式
+#   5. 配置 Nginx 反向代理（HTTPS + WebSocket）
+#   6. 配置 Systemd 服务自启动
+#   7. 支持回滚机制
 #
 # 用法:
-#   ./install_newapi_docker.sh        # 交互式部署
-#   ./install_newapi_docker.sh -h     # 显示帮助
+#   ./install.sh        # 交互式安装/升级
+#   ./install.sh -h     # 显示帮助
 #
 # 前置条件：
-#   - Docker 和 docker-compose 已安装
-#   - Nginx 已安装（通过 install_nginx.sh）
-#   - 域名需已解析到本服务器
+#   - 必须先运行 ../nginx/install.sh
+#   - 域名模式：域名需要解析到本服务器
+#   - IP/HTTP 模式：无需域名
 #
 ################################################################################
 
@@ -613,21 +614,21 @@ get_domain_for_mode() {
 # ==================== 帮助 ====================
 show_help() {
     cat <<'EOF'
-New-API Docker 部署脚本
+CliproxyAPI 智能安装/升级脚本
 
 用法:
-  ./install_newapi_docker.sh       # 交互式部署
-  ./install_newapi_docker.sh -h    # 显示此帮助
+  ./install.sh       # 交互式安装/升级
+  ./install.sh -h    # 显示此帮助
 
 功能:
-  - Docker Compose 部署 (New-API + PostgreSQL/MySQL + Redis)
+  - 自动检测全新安装 or 升级
   - 支持域名/IP/HTTP 三种访问模式
-  - 自动申请 Let's Encrypt 证书
-  - Nginx 反向代理 + HTTP/3 支持
+  - 自动申请 SSL 证书或生成自签名证书
+  - 配置 Nginx 反向代理 + Systemd 服务
+  - 升级时保留所有配置，仅更新二进制
 
 前置条件:
-  - 已安装 Docker (install_docker.sh)
-  - 已安装 Nginx (install_nginx.sh)
+  - 已安装 Nginx (../nginx/install.sh)
   - 域名模式需 DNS 已解析
 EOF
     exit 0
@@ -640,39 +641,25 @@ for arg in "$@"; do
 done
 
 # ==================== 全局配置 ====================
-NEWAPI_PORT=3000
+CLIPROXY_PORT=8317
 CONF_D="/etc/nginx/conf.d"
 SSL_DIR="/etc/nginx/ssl"
-DOCKER_ROOT="/opt/docker-services"
-SERVICE_DIR="$DOCKER_ROOT/new-api"
-DATA_DIR="$SERVICE_DIR/data"
-LOGS_DIR="$SERVICE_DIR/logs"
-DOCKER_IMAGE="calciumion/new-api:latest"
-DOCKER_NETWORK="ai-services"
+INSTALL_DIR="/opt/cliproxyapi"
+CONFIG_DIR="/etc/cliproxyapi"
+DATA_DIR="/var/lib/cliproxyapi"
+LOG_DIR="/var/log/cliproxyapi"
+GITHUB_REPO="router-for-me/CLIProxyAPI"
+GITHUB_API="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
 
 # ==================== 环境检查 ====================
 check_root
-setup_logging "newapi-install"
+setup_logging "cliproxyapi-install"
 
-ensure_commands curl wget openssl
-
-if ! command -v docker &> /dev/null \
-    || ! systemctl is-active --quiet docker 2>/dev/null \
-    || [ -z "$(detect_compose_cmd)" ]; then
-    log_error "Docker/Compose 环境未就绪。"
-    log_info "请先安装 Docker：进入仓库根目录的 docker/ 目录运行 sudo ./install_docker.sh，或使用根目录 sudo ./install.sh 选择 Docker。"
-    exit 1
-fi
-
-COMPOSE_CMD=$(detect_compose_cmd)
-if [ -z "$COMPOSE_CMD" ]; then
-    log_error "未检测到 docker-compose。请安装: apt-get install docker-compose-plugin"
-    exit 1
-fi
+ensure_commands curl wget tar openssl
 
 if ! command -v nginx &> /dev/null; then
     log_error "未检测到 Nginx。"
-    log_info "请先安装 Nginx：进入仓库根目录的 nginx/ 目录运行 sudo ./install_nginx.sh，或使用根目录 sudo ./install.sh 选择 Nginx。"
+    log_info "请先安装 Nginx：进入仓库根目录的 nginx/ 目录运行 sudo ./install.sh，或使用根目录 sudo ./install.sh 选择 Nginx。"
     exit 1
 fi
 
@@ -682,422 +669,450 @@ if ! nginx -t >/dev/null 2>&1 || ! systemctl is-active --quiet nginx 2>/dev/null
     exit 1
 fi
 
-# 端口检查（覆盖安装时允许现有 New-API 占用端口）
-if [ ! -f "$SERVICE_DIR/docker-compose.yml" ]; then
-    ensure_port_available "$NEWAPI_PORT" "New-API"
+# 端口检查（仅在全新安装时严格检查）
+if [ ! -f "$INSTALL_DIR/version.txt" ]; then
+    ensure_port_available "$CLIPROXY_PORT" "CliproxyAPI"
 fi
 
-# ==================== 欢迎 ====================
-clear 2>/dev/null || true
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${CYAN}   New-API Docker 部署程序 v${COMMON_VERSION}${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
+# ==================== 检测安装状态 ====================
+IS_UPGRADE=false
+CURRENT_VERSION="none"
 
-if [ -f "$SERVICE_DIR/docker-compose.yml" ]; then
-    log_warning "检测到已安装 New-API"
+if [ -f "$INSTALL_DIR/version.txt" ]; then
+    IS_UPGRADE=true
+    CURRENT_VERSION=$(cat "$INSTALL_DIR/version.txt" 2>/dev/null || echo "unknown")
+fi
+
+# ==================== 欢迎横幅 ====================
+clear 2>/dev/null || true
+if [ "$IS_UPGRADE" = true ]; then
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}   CliproxyAPI 升级程序 v${COMMON_VERSION}${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    log_info "检测到已安装版本: v${CURRENT_VERSION}"
+    log_warning "即将进入升级模式（保留所有配置）"
+    echo ""
     if ! is_noninteractive; then
-        if ! confirm "是否覆盖安装？"; then
-            log_info "安装已取消。"
-            exit 0
+        read -r -p "按回车键继续，或 Ctrl+C 取消..." _
+    fi
+else
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}   CliproxyAPI 安装程序 v${COMMON_VERSION}${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+fi
+
+# ==================== 交互输入（仅全新安装） ====================
+USE_DOMAIN=true
+USE_HTTP_ONLY=false
+ADMIN_SECRET=""
+API_KEY_1=""
+API_KEY_2=""
+
+if [ "$IS_UPGRADE" = false ]; then
+    if is_noninteractive; then
+        MODE="${HONGAIBOX_ACCESS_MODE:-domain}"
+        DOMAIN="${HONGAIBOX_DOMAIN:-$(detect_server_ip)}"
+        ADMIN_SECRET="${HONGAIBOX_ADMIN_PASSWORD:-$(generate_password 32)}"
+        case "$MODE" in
+            domain) USE_DOMAIN=true; USE_HTTP_ONLY=false ;;
+            ip)     USE_DOMAIN=false; USE_HTTP_ONLY=false ;;
+            http)   USE_DOMAIN=false; USE_HTTP_ONLY=true ;;
+        esac
+    else
+        MODE=$(select_access_mode)
+
+        case "$MODE" in
+            domain) USE_DOMAIN=true; USE_HTTP_ONLY=false ;;
+            ip)     USE_DOMAIN=false; USE_HTTP_ONLY=false ;;
+            http)   USE_DOMAIN=false; USE_HTTP_ONLY=true ;;
+        esac
+
+        DOMAIN=$(get_domain_for_mode "$MODE")
+
+        echo ""
+        read -r -p "请输入管理面板密码: " ADMIN_SECRET
+        if [ -z "$ADMIN_SECRET" ]; then
+            log_error "管理面板密码不能为空。"
+            exit 1
         fi
+
+        echo ""
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        if [ "$USE_HTTP_ONLY" = true ]; then
+            echo -e "${YELLOW}⚠️  HTTP 模式：无 SSL 加密${NC}"
+        elif [ "$USE_DOMAIN" = true ]; then
+            echo -e "${YELLOW}⚠️  重要提示：请确保域名已解析${NC}"
+        else
+            echo -e "${YELLOW}⚠️  IP 模式：将使用自签名证书${NC}"
+        fi
+        echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "访问地址: ${GREEN}$DOMAIN${NC}"
+        echo -e "服务器IP: ${GREEN}$(detect_server_ip)${NC}"
+        echo ""
+        read -r -p "按回车键继续安装，Ctrl+C 取消..." _
+    fi
+else
+    # 升级模式：从现有配置读取域名
+    DOMAIN=""
+    EXISTING_CONF=""
+    for conf_file in "$CONF_D"/*.conf; do
+        if [ -f "$conf_file" ] && grep -q "CLI-PROXY-API-START" "$conf_file" 2>/dev/null; then
+            EXISTING_CONF="$conf_file"
+            break
+        fi
+    done
+
+    if [ -n "$EXISTING_CONF" ]; then
+        DOMAIN=$(grep "server_name" "$EXISTING_CONF" | head -1 | awk '{print $2}' | sed 's/;//g' || echo "")
+        log_info "检测到现有域名: $DOMAIN"
+    else
+        log_warning "未检测到现有 Nginx 配置，升级后可能需要手动配置"
+    fi
+
+    if [ -f "$CONFIG_DIR/config.yaml" ]; then
+        ADMIN_SECRET=$(grep "secret-key:" "$CONFIG_DIR/config.yaml" | awk '{print $2}' | tr -d '"' || echo "")
     fi
 fi
 
-# ==================== 交互输入 ====================
-log_step "[1/8] 请输入配置信息"
-echo ""
-
-if is_noninteractive; then
-    MODE="${HONGAIBOX_ACCESS_MODE:-domain}"
-    DOMAIN="${HONGAIBOX_DOMAIN:-$(detect_server_ip)}"
-    DB_CHOICE="${HONGAIBOX_DB_TYPE:-postgresql}"
-    case "$DB_CHOICE" in
-        mysql|MySQL) DB_CHOICE=2 ;;
-        *)           DB_CHOICE=1 ;;
-    esac
-    USE_DOMAIN=false
-    USE_HTTP_ONLY=false
+if [ "$IS_UPGRADE" = false ]; then
     case "$MODE" in
-        domain) USE_DOMAIN=true ;;
-        http)   USE_HTTP_ONLY=true ;;
-    esac
-else
-    MODE=$(select_access_mode)
-
-    USE_DOMAIN=false
-    USE_HTTP_ONLY=false
-    case "$MODE" in
-        domain) USE_DOMAIN=true ;;
-        http)   USE_HTTP_ONLY=true ;;
+        domain) validate_domain "$DOMAIN" || exit 1 ;;
+        ip|http) validate_ip "$DOMAIN" || exit 1 ;;
+        *) log_error "未知访问模式: $MODE"; exit 1 ;;
     esac
 
-    DOMAIN=$(get_domain_for_mode "$MODE")
+    PREEXISTING_CONF="$(find_nginx_conf_by_server_name "$DOMAIN" "$CONF_D" || true)"
+    if [ -n "$PREEXISTING_CONF" ] && ! grep -q "CLI-PROXY-API-START" "$PREEXISTING_CONF"; then
+        log_error "Nginx server_name 已被其他配置占用: $PREEXISTING_CONF"
+        log_error "请为 CliproxyAPI 使用独立域名，避免覆盖其他服务。"
+        exit 1
+    fi
 fi
 
-SERVER_IP=$(detect_server_ip)
+# ==================== 检测系统架构 ====================
+echo ""
+log_step "[1/7] 检测系统架构..."
 
-case "$MODE" in
-    domain) validate_domain "$DOMAIN" || exit 1 ;;
-    ip|http) validate_ip "$DOMAIN" || exit 1 ;;
-    *) log_error "未知访问模式: $MODE"; exit 1 ;;
-esac
+ARCH=$(detect_arch)
+if [ "$ARCH" = "unknown" ]; then
+    log_error "不支持的系统架构: $(uname -m)"
+    exit 1
+fi
+log_success "架构: $ARCH"
 
-PREEXISTING_CONF="$(find_nginx_conf_by_server_name "$DOMAIN" "$CONF_D" || true)"
-if [ -n "$PREEXISTING_CONF" ] && ! grep -q "NEW-API-START" "$PREEXISTING_CONF"; then
-    log_error "Nginx server_name 已被其他配置占用: $PREEXISTING_CONF"
-    log_error "请为 New-API 使用独立域名，避免覆盖其他服务。"
+# ==================== 获取最新版本 ====================
+log_step "[2/7] 获取最新版本信息..."
+
+RELEASE_INFO=$(curl -s --connect-timeout 15 "$GITHUB_API") || true
+
+if [ -z "$RELEASE_INFO" ]; then
+    log_error "无法获取版本信息，请检查网络连接。"
     exit 1
 fi
 
-echo ""
+LATEST_VERSION=$(echo "$RELEASE_INFO" | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4 | sed 's/^v//') || true
 
-# 数据库类型选择
-USE_POSTGRESQL=true
-DB_TYPE="PostgreSQL"
-DB_IMAGE="postgres:15"
-if is_noninteractive; then
-    case "$DB_CHOICE" in
-        2)
-            USE_POSTGRESQL=false
-            DB_TYPE="MySQL"
-            DB_IMAGE="mysql:8.2"
-            ;;
-    esac
-else
-    echo -e "${CYAN}选择数据库类型:${NC}"
-    echo "  1) PostgreSQL 15 (推荐)"
-    echo "  2) MySQL 8.2"
-    read -r -p "请选择 [1-2, 默认 1]: " DB_CHOICE
-    case "$DB_CHOICE" in
-        2)
-            USE_POSTGRESQL=false
-            DB_TYPE="MySQL"
-            DB_IMAGE="mysql:8.2"
-            ;;
-    esac
-fi
-
-log_info "已选择: $DB_TYPE"
-echo ""
-
-# 使用安全随机生成密码
-log_info "正在生成安全随机密码..."
-DB_PASSWORD=$(generate_password 32)
-REDIS_PASSWORD=$(generate_password 32)
-SESSION_SECRET=$(generate_session_secret 48)
-log_success "密码已生成（将保存到信息文件）"
-echo ""
-
-# 确认
-echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-if [ "$USE_DOMAIN" = true ]; then
-    echo -e "${YELLOW}⚠️  请确保域名已解析:${NC}"
-    echo -e "域名:   ${GREEN}$DOMAIN${NC}"
-    echo -e "目标IP: ${GREEN}$SERVER_IP${NC}"
-elif [ "$USE_HTTP_ONLY" = true ]; then
-    echo -e "${YELLOW}⚠️  HTTP 模式: 数据不加密${NC}"
-    echo -e "访问地址: ${GREEN}http://$DOMAIN${NC}"
-else
-    echo -e "${YELLOW}⚠️  IP 模式: 将使用自签名证书${NC}"
-    echo -e "访问地址: ${GREEN}https://$DOMAIN${NC}"
-fi
-echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
-if ! is_noninteractive; then
-    read -r -p "按回车键继续部署..." _
-fi
-
-# ==================== 创建目录 ====================
-log_step "[2/8] 创建目录结构..."
-
-mkdir -p "$DOCKER_ROOT" "$SERVICE_DIR" "$DATA_DIR/postgres" "$DATA_DIR/redis" "$LOGS_DIR"
-log_success "目录创建完成"
-
-# ==================== 生成 docker-compose.yml ====================
-log_step "[3/8] 生成 Docker Compose 配置..."
-
-if [ "$USE_POSTGRESQL" = true ]; then
-    cat > "$SERVICE_DIR/docker-compose.yml" <<COMPOSE_EOF
-version: '3.8'
-
-services:
-  new-api:
-    image: $DOCKER_IMAGE
-    container_name: new-api
-    restart: always
-    ports:
-      - "127.0.0.1:$NEWAPI_PORT:3000"
-    volumes:
-      - ./data:/data
-      - ./logs:/app/logs
-    environment:
-      - SQL_DSN=postgresql://newapi:$DB_PASSWORD@postgres:5432/newapi
-      - REDIS_CONN_STRING=redis://:$REDIS_PASSWORD@redis:6379
-      - SESSION_SECRET=$SESSION_SECRET
-      - TZ=Asia/Shanghai
-      - ERROR_LOG_ENABLED=true
-      - BATCH_UPDATE_ENABLED=true
-      - STREAMING_TIMEOUT=300
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    networks:
-      - $DOCKER_NETWORK
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/status || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  postgres:
-    image: $DB_IMAGE
-    container_name: newapi-postgres
-    restart: always
-    environment:
-      POSTGRES_USER: newapi
-      POSTGRES_PASSWORD: $DB_PASSWORD
-      POSTGRES_DB: newapi
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - $DOCKER_NETWORK
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U newapi"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    container_name: newapi-redis
-    restart: always
-    command: redis-server --requirepass $REDIS_PASSWORD --appendonly yes
-    volumes:
-      - redis_data:/data
-    networks:
-      - $DOCKER_NETWORK
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "$REDIS_PASSWORD", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-
-networks:
-  $DOCKER_NETWORK:
-    name: $DOCKER_NETWORK
-    driver: bridge
-
-volumes:
-  postgres_data:
-    driver: local
-  redis_data:
-    driver: local
-COMPOSE_EOF
-else
-    cat > "$SERVICE_DIR/docker-compose.yml" <<COMPOSE_EOF
-version: '3.8'
-
-services:
-  new-api:
-    image: $DOCKER_IMAGE
-    container_name: new-api
-    restart: always
-    ports:
-      - "127.0.0.1:$NEWAPI_PORT:3000"
-    volumes:
-      - ./data:/data
-      - ./logs:/app/logs
-    environment:
-      - SQL_DSN=newapi:$DB_PASSWORD@tcp(mysql:3306)/newapi
-      - REDIS_CONN_STRING=redis://:$REDIS_PASSWORD@redis:6379
-      - SESSION_SECRET=$SESSION_SECRET
-      - TZ=Asia/Shanghai
-      - ERROR_LOG_ENABLED=true
-      - BATCH_UPDATE_ENABLED=true
-      - STREAMING_TIMEOUT=300
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    networks:
-      - $DOCKER_NETWORK
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/status || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  mysql:
-    image: $DB_IMAGE
-    container_name: newapi-mysql
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: $DB_PASSWORD
-      MYSQL_DATABASE: newapi
-      MYSQL_USER: newapi
-      MYSQL_PASSWORD: $DB_PASSWORD
-    volumes:
-      - mysql_data:/var/lib/mysql
-    networks:
-      - $DOCKER_NETWORK
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$DB_PASSWORD"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    container_name: newapi-redis
-    restart: always
-    command: redis-server --requirepass $REDIS_PASSWORD --appendonly yes
-    volumes:
-      - redis_data:/data
-    networks:
-      - $DOCKER_NETWORK
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "$REDIS_PASSWORD", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-
-networks:
-  $DOCKER_NETWORK:
-    name: $DOCKER_NETWORK
-    driver: bridge
-
-volumes:
-  mysql_data:
-    driver: local
-  redis_data:
-    driver: local
-COMPOSE_EOF
-fi
-
-log_success "Docker Compose 配置已生成"
-
-# ==================== 拉取镜像 ====================
-log_step "[4/8] 拉取 Docker 镜像..."
-
-cd "$SERVICE_DIR"
-
-log_info "正在拉取镜像（可能需要几分钟）..."
-if $COMPOSE_CMD pull; then
-    log_success "镜像拉取完成"
-else
-    log_error "镜像拉取失败，请检查网络连接。"
+if [ -z "$LATEST_VERSION" ]; then
+    log_error "无法解析版本号。"
     exit 1
 fi
 
-# ==================== 启动服务 ====================
-log_step "[5/8] 启动 Docker 服务..."
+log_success "最新版本: v$LATEST_VERSION"
 
-log_info "正在启动容器..."
-if $COMPOSE_CMD up -d; then
-    log_success "容器启动成功"
-else
-    log_error "容器启动失败"
-    $COMPOSE_CMD logs 2>/dev/null || true
+if [ "$IS_UPGRADE" = true ] && [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
+    log_success "已是最新版本 (v$LATEST_VERSION)，无需升级。"
+    exit 0
+fi
+
+# ==================== 备份（仅升级模式） ====================
+BACKUP_DIR=""
+SERVICE_WAS_RUNNING=false
+
+if [ "$IS_UPGRADE" = true ]; then
+    log_step "[3/7] 备份现有配置..."
+
+    BACKUP_DIR="${INSTALL_DIR}/backup_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$BACKUP_DIR"
+
+    [ -f "$CONFIG_DIR/config.yaml" ] && cp -a "$CONFIG_DIR/config.yaml" "$BACKUP_DIR/config.yaml" && log_success "✓ 已备份配置文件"
+    [ -d "$DATA_DIR" ] && cp -a "$DATA_DIR" "$BACKUP_DIR/data" && log_success "✓ 已备份数据目录"
+    [ -f "$INSTALL_DIR/cli-proxy-api" ] && cp -a "$INSTALL_DIR/cli-proxy-api" "$BACKUP_DIR/cli-proxy-api.bak" && log_success "✓ 已备份可执行文件"
+
+    log_success "备份完成: $BACKUP_DIR"
+
+    if systemctl is-active --quiet cliproxyapi 2>/dev/null; then
+        SERVICE_WAS_RUNNING=true
+        systemctl stop cliproxyapi
+        log_success "服务已停止"
+    fi
+    sleep 2
+fi
+
+# ==================== 下载并安装 ====================
+STEP_NUM=$([ "$IS_UPGRADE" = true ] && echo "4" || echo "3")
+log_step "[${STEP_NUM}/7] 下载并安装 CliproxyAPI..."
+
+EXPECTED_FILENAME="CLIProxyAPI_${LATEST_VERSION}_${ARCH}.tar.gz"
+DOWNLOAD_URL=$(echo "$RELEASE_INFO" | grep -o "\"browser_download_url\": *\"[^\"]*${EXPECTED_FILENAME}[^\"]*\"" | cut -d'"' -f4) || true
+
+if [ -z "$DOWNLOAD_URL" ]; then
+    log_error "无法找到架构 ${ARCH} 的下载地址。"
+    [ "$IS_UPGRADE" = true ] && exit 1 || exit 1
+fi
+
+TMP_DIR=$(mktemp -d)
+cd "$TMP_DIR"
+
+log_info "下载: $EXPECTED_FILENAME"
+if ! curl -L --connect-timeout 120 -o "cli-proxy-api.tar.gz" "$DOWNLOAD_URL"; then
+    log_error "下载失败，请检查网络连接。"
+    rm -rf "$TMP_DIR"
     exit 1
 fi
 
-# 使用健康检查轮询替代固定 sleep
-log_info "等待服务健康检查通过（最多 90 秒）..."
-wait_for_healthy "$COMPOSE_CMD" "$SERVICE_DIR" 90 5 "new-api" || true
+log_success "下载完成"
+tar -xzf "cli-proxy-api.tar.gz"
 
-if $COMPOSE_CMD ps 2>/dev/null | grep -q "Up"; then
-    log_success "服务运行正常"
-else
-    log_warning "服务可能未正常启动，请检查日志"
-    $COMPOSE_CMD ps 2>/dev/null || true
-fi
+mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$DATA_DIR/storage" "$DATA_DIR/auth" "$LOG_DIR"
 
-# ==================== SSL 证书 ====================
-log_step "[6/8] 配置 SSL 证书..."
-
-DOMAIN_SSL_DIR="$SSL_DIR/$DOMAIN"
-
-if [ "$USE_HTTP_ONLY" = true ]; then
-    SSL_TYPE="无 (HTTP 模式)"
-    log_info "HTTP 模式，跳过 SSL 证书配置"
-elif [ "$USE_DOMAIN" = true ]; then
-    SSL_TYPE=$(apply_ssl_certificate "$DOMAIN" "$DOMAIN_SSL_DIR" "domain")
-else
-    SSL_TYPE=$(apply_ssl_certificate "$DOMAIN" "$DOMAIN_SSL_DIR" "ip")
-fi
-
-# ==================== Nginx 配置 ====================
-log_step "[7/8] 配置 Nginx 反向代理..."
-
-NGINX_SUPPORTS_HTTP3=false
-if detect_nginx_http3; then
-    NGINX_SUPPORTS_HTTP3=true
-    log_info "检测到 HTTP/3 支持"
-fi
-
-CONF_FILE="$CONF_D/${DOMAIN}.conf"
-
-EXISTING_DOMAIN_CONF="$(find_nginx_conf_by_server_name "$DOMAIN" "$CONF_D" || true)"
-if [ -n "$EXISTING_DOMAIN_CONF" ] && ! grep -q "NEW-API-START" "$EXISTING_DOMAIN_CONF"; then
-    log_error "Nginx server_name 已被其他配置占用: $EXISTING_DOMAIN_CONF"
-    log_error "请为 New-API 使用独立域名，避免覆盖其他服务。"
+BINARY_FILE=$(find . -name "cli-proxy-api" -type f | head -1)
+if [ -z "$BINARY_FILE" ]; then
+    log_error "解压后未找到可执行文件。"
+    rm -rf "$TMP_DIR"
     exit 1
 fi
-[ -f "$CONF_FILE" ] && backup_file "$CONF_FILE"
 
-# 公共 location 块
-read -r -d '' NGINX_LOCATION <<'NGX_LOC_EOF' || true
-    #NEW-API-START
-    location / {
-        proxy_pass http://127.0.0.1:NEWAPI_PORT_PLACEHOLDER;
+mv "$BINARY_FILE" "$INSTALL_DIR/cli-proxy-api"
+chmod +x "$INSTALL_DIR/cli-proxy-api"
+echo "$LATEST_VERSION" > "$INSTALL_DIR/version.txt"
+
+log_success "安装完成: $INSTALL_DIR/cli-proxy-api"
+cd / && rm -rf "$TMP_DIR"
+
+# ==================== 配置文件处理 ====================
+STEP_NUM=$([ "$IS_UPGRADE" = true ] && echo "5" || echo "4")
+log_step "[${STEP_NUM}/7] 配置文件处理..."
+
+if [ "$IS_UPGRADE" = true ]; then
+    if [ -f "$BACKUP_DIR/config.yaml" ]; then
+        cp -a "$BACKUP_DIR/config.yaml" "$CONFIG_DIR/config.yaml"
+        log_success "配置文件已恢复（保留所有设置）"
+    else
+        log_warning "备份配置不存在，保持现有配置"
+    fi
+else
+    # 使用安全的密钥生成
+    API_KEY_1=$(generate_api_key "sk-")
+    API_KEY_2=$(generate_api_key "sk-")
+    ADMIN_SECRET_ESCAPED=$(escape_double_quoted "$ADMIN_SECRET")
+
+    cat > "$CONFIG_DIR/config.yaml" <<YAML_EOF
+# CliproxyAPI Configuration File
+# Auto-generated by install script v${COMMON_VERSION}
+
+# ==================== Server Configuration ====================
+host: "127.0.0.1"
+port: $CLIPROXY_PORT
+
+# ==================== Authentication ====================
+auth-dir: "$DATA_DIR/auth"
+
+# API keys for client authentication
+api-keys:
+  - "$API_KEY_1"
+  - "$API_KEY_2"
+
+# ==================== Management Panel ====================
+remote-management:
+  allow-remote: true
+  secret-key: "$ADMIN_SECRET_ESCAPED"
+  disable-control-panel: false
+  panel-github-repository: "https://github.com/router-for-me/Cli-Proxy-API-Management-Center"
+
+# ==================== Logging ====================
+debug: false
+logging-to-file: true
+logs-max-total-size-mb: 100
+
+# ==================== Performance ====================
+commercial-mode: false
+usage-statistics-enabled: false
+
+# ==================== Request Handling ====================
+proxy-url: ""
+force-model-prefix: false
+request-retry: 3
+max-retry-interval: 30
+
+quota-exceeded:
+  switch-project: true
+  switch-preview-model: true
+
+routing:
+  strategy: "round-robin"
+
+ws-auth: false
+
+# ==================== TLS ====================
+# TLS is handled by Nginx, keep disabled
+tls:
+  enable: false
+  cert: ""
+  key: ""
+YAML_EOF
+
+    log_success "配置文件: $CONFIG_DIR/config.yaml"
+    log_info "API 密钥 1: $API_KEY_1"
+    log_info "API 密钥 2: $API_KEY_2"
+fi
+
+# ==================== SSL 证书处理 ====================
+if [ "$IS_UPGRADE" = false ] && [ -n "$DOMAIN" ]; then
+    STEP_NUM=$([ "$IS_UPGRADE" = true ] && echo "6" || echo "5")
+    log_step "[${STEP_NUM}/7] 配置 SSL 证书..."
+
+    DOMAIN_SSL_DIR="$SSL_DIR/$DOMAIN"
+
+    if [ "$USE_HTTP_ONLY" = true ]; then
+        SSL_TYPE="无 (HTTP 模式)"
+        log_info "HTTP 模式，跳过 SSL 证书配置"
+    elif [ "$USE_DOMAIN" = true ]; then
+        SSL_TYPE=$(apply_ssl_certificate "$DOMAIN" "$DOMAIN_SSL_DIR" "domain")
+    else
+        SSL_TYPE=$(apply_ssl_certificate "$DOMAIN" "$DOMAIN_SSL_DIR" "ip")
+    fi
+fi
+
+# ==================== Nginx 配置（仅全新安装） ====================
+if [ "$IS_UPGRADE" = false ] && [ -n "$DOMAIN" ]; then
+    STEP_NUM=$([ "$IS_UPGRADE" = true ] && echo "7" || echo "6")
+    log_step "[${STEP_NUM}/7] 配置 Nginx 反向代理..."
+
+    NGINX_SUPPORTS_HTTP3=false
+    if detect_nginx_http3; then
+        NGINX_SUPPORTS_HTTP3=true
+        log_info "检测到 HTTP/3 支持"
+    fi
+
+    DOMAIN_SSL_DIR="$SSL_DIR/$DOMAIN"
+    mkdir -p "$DOMAIN_SSL_DIR"
+
+    # 公共 location 块（所有模式共用）
+    read -r -d '' LOCATION_BLOCKS <<'LOC_EOF' || true
+    #CLI-PROXY-API-START
+
+    # WebSocket
+    location /v1/ws {
+        proxy_pass http://127.0.0.1:CLIPROXY_PORT_PLACEHOLDER;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+        proxy_send_timeout 86400;
+    }
+
+    # OpenAI SSE - Chat Completions
+    location /v1/chat/completions {
+        proxy_pass http://127.0.0.1:CLIPROXY_PORT_PLACEHOLDER;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-
-        # WebSocket 支持
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-
-        # SSE 流式响应支持
+        proxy_set_header Connection "";
+        proxy_set_header Accept-Encoding "";
         proxy_buffering off;
+        proxy_request_buffering off;
         proxy_cache off;
+        add_header X-Accel-Buffering no always;
+        gzip off;
         proxy_read_timeout 3600;
         proxy_send_timeout 3600;
         chunked_transfer_encoding on;
     }
-    #NEW-API-END
-NGX_LOC_EOF
 
-if [ "$USE_HTTP_ONLY" = true ]; then
-    cat > "$CONF_FILE" <<NGX_HTTP
+    # 其他 v1 API
+    location /v1/ {
+        proxy_pass http://127.0.0.1:CLIPROXY_PORT_PLACEHOLDER;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600;
+        proxy_send_timeout 3600;
+    }
+
+    # v0 管理接口
+    location /v0/ {
+        proxy_pass http://127.0.0.1:CLIPROXY_PORT_PLACEHOLDER;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60;
+    }
+
+    # 默认
+    location / {
+        proxy_pass http://127.0.0.1:CLIPROXY_PORT_PLACEHOLDER;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600;
+        proxy_send_timeout 3600;
+    }
+
+    #CLI-PROXY-API-END
+LOC_EOF
+
+    # 生成 Nginx 配置
+    CONF_FILE="$CONF_D/${DOMAIN}.conf"
+
+    EXISTING_DOMAIN_CONF="$(find_nginx_conf_by_server_name "$DOMAIN" "$CONF_D" || true)"
+    if [ -n "$EXISTING_DOMAIN_CONF" ] && ! grep -q "CLI-PROXY-API-START" "$EXISTING_DOMAIN_CONF"; then
+        log_error "Nginx server_name 已被其他配置占用: $EXISTING_DOMAIN_CONF"
+        log_error "请为 CliproxyAPI 使用独立域名，避免覆盖其他服务。"
+        exit 1
+    fi
+    [ -f "$CONF_FILE" ] && backup_file "$CONF_FILE"
+
+    if [ "$USE_HTTP_ONLY" = true ]; then
+        # HTTP 模式
+        cat > "$CONF_FILE" <<NGX_HTTP
 server {
     listen 80;
     server_name $DOMAIN;
-    client_max_body_size 50m;
+
+    client_max_body_size 100m;
     tcp_nodelay on;
-    access_log /var/log/nginx/newapi_access.log;
-    error_log /var/log/nginx/newapi_error.log warn;
-$NGINX_LOCATION
+
+    access_log /var/log/nginx/cliproxyapi_access.log;
+    error_log /var/log/nginx/cliproxyapi_error.log warn;
+
+$LOCATION_BLOCKS
 }
 NGX_HTTP
-elif [ "$NGINX_SUPPORTS_HTTP3" = true ]; then
-    cat > "$CONF_FILE" <<NGX_H3
+    elif [ "$NGINX_SUPPORTS_HTTP3" = true ]; then
+        # HTTP/3 模式
+        cat > "$CONF_FILE" <<NGX_H3
 server {
     listen 80;
     listen 443 ssl;
     listen 443 quic;
     http2 on;
+
     server_name $DOMAIN;
-    client_max_body_size 50m;
+    client_max_body_size 100m;
     tcp_nodelay on;
 
     location /.well-known/acme-challenge/ {
@@ -1124,19 +1139,22 @@ server {
     error_page 497 https://\$host\$request_uri;
     #SSL-END
 
-    access_log /var/log/nginx/newapi_access.log;
-    error_log /var/log/nginx/newapi_error.log warn;
-$NGINX_LOCATION
+    access_log /var/log/nginx/cliproxyapi_access.log;
+    error_log /var/log/nginx/cliproxyapi_error.log warn;
+
+$LOCATION_BLOCKS
 }
 NGX_H3
-else
-    cat > "$CONF_FILE" <<NGX_H2
+    else
+        # HTTP/2 模式
+        cat > "$CONF_FILE" <<NGX_H2
 server {
     listen 80;
     listen 443 ssl;
     http2 on;
+
     server_name $DOMAIN;
-    client_max_body_size 50m;
+    client_max_body_size 100m;
     tcp_nodelay on;
 
     location /.well-known/acme-challenge/ {
@@ -1162,108 +1180,153 @@ server {
     error_page 497 https://\$host\$request_uri;
     #SSL-END
 
-    access_log /var/log/nginx/newapi_access.log;
-    error_log /var/log/nginx/newapi_error.log warn;
-$NGINX_LOCATION
+    access_log /var/log/nginx/cliproxyapi_access.log;
+    error_log /var/log/nginx/cliproxyapi_error.log warn;
+
+$LOCATION_BLOCKS
 }
 NGX_H2
+    fi
+
+    # 替换占位符
+    sed -i "s|CLIPROXY_PORT_PLACEHOLDER|$CLIPROXY_PORT|g" "$CONF_FILE"
+
+    log_success "Nginx 配置已生成: $CONF_FILE"
+
+    if nginx -t >/dev/null 2>&1; then
+        systemctl reload nginx || true
+        log_success "Nginx 已重载"
+    else
+        log_error "Nginx 配置测试失败"
+        nginx -t 2>&1 || true
+    fi
 fi
 
-# 替换占位符
-sed -i "s|NEWAPI_PORT_PLACEHOLDER|$NEWAPI_PORT|g" "$CONF_FILE"
+# ==================== Systemd 服务 ====================
+log_step "[7/7] 配置 Systemd 服务..."
 
-log_success "Nginx 配置已生成: $CONF_FILE"
+cat > /etc/systemd/system/cliproxyapi.service <<SVC_EOF
+[Unit]
+Description=CLIProxyAPI Service
+Documentation=https://help.router-for.me/cn/
+After=network.target
 
-if nginx -t >/dev/null 2>&1; then
-    systemctl reload nginx || true
-    log_success "Nginx 已重载"
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$INSTALL_DIR
+ExecStart=$INSTALL_DIR/cli-proxy-api -config $CONFIG_DIR/config.yaml
+Restart=always
+RestartSec=10s
+
+Environment="HOME=/root"
+
+NoNewPrivileges=true
+PrivateTmp=true
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+SVC_EOF
+
+systemctl daemon-reload
+systemctl enable cliproxyapi >/dev/null 2>&1
+
+if [ "$IS_UPGRADE" = true ] && [ "$SERVICE_WAS_RUNNING" = true ]; then
+    systemctl start cliproxyapi || true
+elif [ "$IS_UPGRADE" = false ]; then
+    systemctl start cliproxyapi || true
+fi
+
+sleep 2
+
+if systemctl is-active --quiet cliproxyapi; then
+    log_success "服务已启动"
 else
-    log_error "Nginx 配置测试失败"
-    nginx -t 2>&1 || true
+    log_warning "服务启动失败，请检查: journalctl -u cliproxyapi -n 50"
 fi
 
-# ==================== 生成信息文件 ====================
-log_step "[8/8] 生成配置信息文件..."
+# ==================== 完成信息 ====================
+SERVER_IP=$(detect_server_ip)
 
-INFO_FILE="$SERVICE_DIR/newapi_info.txt"
-
-if [ "$USE_HTTP_ONLY" = true ]; then
-    ACCESS_URL="http://$DOMAIN"
-elif [ "$USE_DOMAIN" = true ]; then
-    ACCESS_URL="https://$DOMAIN"
+clear 2>/dev/null || true
+echo -e "${GREEN}"
+if [ "$IS_UPGRADE" = true ]; then
+    cat <<EOF
+================================================
+       CliproxyAPI 升级成功！(v${COMMON_VERSION})
+================================================
+EOF
+    echo -e "${NC}"
+    echo -e "旧版本:     ${YELLOW}v${CURRENT_VERSION}${NC}"
+    echo -e "新版本:     ${GREEN}v${LATEST_VERSION}${NC}"
+    echo ""
+    echo -e "${CYAN}[配置保留]${NC}"
+    echo -e "配置文件:   已保留"
+    echo -e "数据目录:   已保留"
+    echo -e "备份位置:   $BACKUP_DIR"
 else
-    ACCESS_URL="https://$DOMAIN"
-fi
+    if [ "$USE_HTTP_ONLY" = true ]; then
+        PROTOCOL="http"
+        ACCESS_MODE_TEXT="HTTP 模式"
+    elif [ "$USE_DOMAIN" = true ]; then
+        PROTOCOL="https"
+        ACCESS_MODE_TEXT="域名模式"
+    else
+        PROTOCOL="https"
+        ACCESS_MODE_TEXT="IP 模式"
+    fi
 
-cat > "$INFO_FILE" <<INFO_EOF
+    cat <<EOF
 ================================================
-       New-API Docker 部署完成 (v${COMMON_VERSION})
+       CliproxyAPI 安装成功！(v${COMMON_VERSION})
 ================================================
-部署时间: $(date '+%Y-%m-%d %H:%M:%S')
-访问模式: $(if [ "$USE_HTTP_ONLY" = true ]; then echo "HTTP"; elif [ "$USE_DOMAIN" = true ]; then echo "域名"; else echo "IP"; fi)
-访问地址: $ACCESS_URL
+访问模式:  $ACCESS_MODE_TEXT
+服务器 IP: $SERVER_IP
+访问地址:  $DOMAIN
 
-⚠️ 首次访问请在 Web 界面创建管理员账号
-$( [ "$USE_HTTP_ONLY" = true ] && echo "⚠️  HTTP 模式: 数据不加密，仅限内网/开发" )
-$( [ "$USE_HTTP_ONLY" = false ] && [ "$USE_DOMAIN" = false ] && echo "⚠️  IP 模式: 浏览器会提示证书不安全" )
+[访问地址]
+$( [ "$USE_HTTP_ONLY" = true ] && echo "HTTP:      http://$DOMAIN" || echo "HTTPS:     https://$DOMAIN" )
+管理界面:  ${PROTOCOL}://$DOMAIN/management.html
+$( [ "$USE_HTTP_ONLY" = true ] && echo "
+⚠️  HTTP 模式注意事项:
+- 数据传输不加密，API Key 可能泄露
+- 仅建议在内网或开发环境使用" )
+$( [ "$USE_HTTP_ONLY" = false ] && [ "$USE_DOMAIN" = false ] && echo "
+⚠️  IP 模式注意事项:
+- 浏览器会提示证书不安全，请点击「高级」→「继续访问」
+- API 客户端需要关闭 SSL 验证或信任自签名证书" )
 
-[数据库信息]
-类型:      $DB_TYPE
-用户名:    newapi
-密码:      $DB_PASSWORD
-数据库名:  newapi
+[API 密钥]
+密钥 1:    $API_KEY_1
+密钥 2:    $API_KEY_2
 
-[Redis 信息]
-密码:      $REDIS_PASSWORD
+[管理面板]
+访问地址:  ${PROTOCOL}://$DOMAIN/management.html
+登录密码:  $ADMIN_SECRET
 
-[Session Secret]
-$SESSION_SECRET
-
-⚠️ 重要：请妥善保管以上密码信息！
-
-[服务目录]
-Docker 目录:  $SERVICE_DIR
-配置文件:     $SERVICE_DIR/docker-compose.yml
-
-[Docker 管理]
-进入目录:  cd $SERVICE_DIR
-查看状态:  $COMPOSE_CMD ps
-查看日志:  $COMPOSE_CMD logs -f new-api
-重启服务:  $COMPOSE_CMD restart
-
-[升级]
-cd $SERVICE_DIR && $COMPOSE_CMD pull && $COMPOSE_CMD up -d
+[配置信息]
+版本:      v$LATEST_VERSION
+配置文件:  $CONFIG_DIR/config.yaml
+数据目录:  $DATA_DIR
+日志文件:  $LOG_DIR/cliproxyapi.log
 
 [SSL 证书]
-类型:      $SSL_TYPE
-证书目录:  $DOMAIN_SSL_DIR/
-
-[官方文档]
-https://docs.newapi.pro/zh/docs
-================================================
-INFO_EOF
-
-chmod 600 "$INFO_FILE"
-log_success "配置信息已保存: $INFO_FILE"
-
-# ==================== 完成 ====================
-clear 2>/dev/null || true
-cat "$INFO_FILE"
-echo ""
-
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}✅ New-API 部署完成！${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
-echo -e "📋 信息文件: ${YELLOW}$INFO_FILE${NC}"
-echo -e "🌐 访问地址: ${GREEN}$ACCESS_URL${NC}"
-echo -e "📊 服务状态: ${CYAN}cd $SERVICE_DIR && $COMPOSE_CMD ps${NC}"
-echo ""
-if [ "$USE_HTTP_ONLY" = true ]; then
-    echo -e "${YELLOW}⚠️ HTTP 模式: 数据不加密${NC}"
-elif [ "$USE_DOMAIN" = false ]; then
-    echo -e "${YELLOW}⚠️ IP 模式: 证书不受信任${NC}"
+类型:      ${SSL_TYPE:-已存在}
+EOF
 fi
-echo -e "${YELLOW}⚠️ 下一步: 访问 Web 界面创建管理员账号${NC}"
+
+echo ""
+echo -e "${CYAN}[服务管理]${NC}"
+echo "查看状态:  systemctl status cliproxyapi"
+echo "启动服务:  systemctl start cliproxyapi"
+echo "停止服务:  systemctl stop cliproxyapi"
+echo "重启服务:  systemctl restart cliproxyapi"
+echo "查看日志:  journalctl -u cliproxyapi -f"
+echo ""
+echo -e "${GREEN}安装完成！${NC}"
+echo "================================================"
 echo ""
 log_success "日志已保存: $DEPLOY_LOG_FILE"
