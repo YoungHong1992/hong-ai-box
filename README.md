@@ -10,7 +10,7 @@
 
 ## ✨ 特性
 
-- 🚀 **一键部署**：一个脚本，勾选服务即可安装全部组件
+- 🚀 **一键部署**：一个脚本，勾选服务即可安装常用 AI 组件
 - 🎨 **彩色终端界面**：清晰的交互式引导，告别繁琐的命令行问答
 - 🔒 **安全基线**：密码/密钥自动生成，TLS 1.2+，自动 SSL 证书
 - 📦 **零依赖**：纯 Bash 实现，兼容 Debian/Ubuntu，无需安装额外运行时
@@ -47,15 +47,19 @@ sudo ./install.sh
 
 ### 单独安装某个服务
 
+每个组件目录都可独立进入并运行安装脚本；脚本已自包含，不依赖外部公共脚本。
+
 ```bash
-cd scripts
-sudo ./nginx/install_nginx.sh          # 安装 Nginx
-sudo ./docker/install_docker.sh        # 安装 Docker
-sudo ./cliproxyapi/install_cliproxyapi_v2.sh  # 安装 CliproxyAPI
-sudo ./new-api/install_newapi_docker.sh      # 安装 New-API
-sudo ./pi-coding-agent/install_pi.sh         # 安装 Pi
-sudo ./science/install_science.sh            # 安装 Science
+cd nginx && sudo ./install_nginx.sh                         # 安装 Nginx
+cd ../docker && sudo ./install_docker.sh                    # 安装 Docker
+cd ../cliproxyapi && sudo ./install_cliproxyapi_v2.sh       # 安装 CliproxyAPI
+cd ../new-api && sudo ./install_newapi_docker.sh            # 安装 New-API
+cd ../pi-coding-agent && sudo ./install_pi.sh               # 安装 Pi
+cd ../science && sudo ./install_science.sh                  # 手动安装 Science（不在根目录 install.sh 菜单中）
 ```
+
+> CliproxyAPI / New-API 需要已安装 Nginx；New-API 还需要 Docker + Compose。缺少依赖时，对应脚本会提示先安装依赖后再继续。
+> Science 属于可选网络工具，不纳入根目录 `install.sh` 一键部署流程，仅供有需要的用户手动进入目录安装。
 
 ---
 
@@ -63,15 +67,13 @@ sudo ./science/install_science.sh            # 安装 Science
 
 ```
 hong-ai-box/
-├── install.sh                  # 🎯 总入口：一键部署全部组件
-├── scripts/                    # 安装脚本
-│   ├── nginx/                  #   Nginx (HTTP/3 + BBR)
-│   ├── docker/                 #   Docker Engine + Compose
-│   ├── cliproxyapi/            #   轻量 AI API 转发代理
-│   ├── new-api/                #   AI 模型网关
-│   ├── pi-coding-agent/        #   终端 AI 编程助手
-│   ├── science/                #   VLESS + Reality
-│   └── lib/                    #   公共函数库（日志、颜色、网络等）
+├── install.sh                  # 🎯 总入口：部署常用 AI 组件（不含 Science）
+├── nginx/                      # Nginx (HTTP/3 + BBR)
+├── docker/                     # Docker Engine + Compose
+├── cliproxyapi/                # 轻量 AI API 转发代理
+├── new-api/                    # AI 模型网关
+├── pi-coding-agent/            # 终端 AI 编程助手
+├── science/                    # VLESS + Reality（手动可选，不在总入口）
 ├── docs/                       # 辅助文档
 └── README.md
 ```
@@ -87,7 +89,7 @@ hong-ai-box/
 | **CliproxyAPI** | 轻量 AI API 转发代理 (~50MB) | 256MB 内存 |
 | **New-API** | AI 模型网关与资产管理系统 | ≥ 1GB 内存 |
 | **Pi** | 终端 AI 编程助手 | 500MB 磁盘 |
-| **Science** | VLESS + XTLS-Vision + Reality | 极低 |
+| **Science** | VLESS + XTLS-Vision + Reality（仅手动安装，不在总入口菜单） | 极低 |
 
 ---
 

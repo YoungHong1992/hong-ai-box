@@ -66,7 +66,7 @@
 ```bash
 cd docker
 chmod +x install_docker.sh
-./install_docker.sh
+sudo ./install_docker.sh
 ```
 
 ### 验证安装
@@ -112,30 +112,19 @@ Docker 已安装？
 ### 方式一：直接运行
 
 ```bash
-./install_docker.sh
+sudo ./install_docker.sh
 ```
 
 适用于独立安装 Docker 环境。
 
-### 方式二：被其他脚本引用
+### 方式二：通过根目录总入口
 
 ```bash
-# 在其他安装脚本中
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DOCKER_INSTALLER="$SCRIPT_DIR/../docker/install_docker.sh"
-
-source "$DOCKER_INSTALLER"
-ensure_docker
+cd ..
+sudo ./install.sh
 ```
 
-提供 `ensure_docker` 函数供调用，已安装则直接返回成功。
-
-### 方式三：通过 deploy_cluster.sh
-
-```bash
-./deploy_cluster.sh
-# 在 Nginx 安装后会自动引导安装 Docker
-```
+各组件脚本均自包含，不再通过 `source` 引用 Docker 安装脚本；需要 Docker 的组件会在未检测到 Docker/Compose 时提示先安装 Docker。
 
 ---
 

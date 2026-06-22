@@ -81,7 +81,7 @@
 ```bash
 cd nginx
 chmod +x install_nginx.sh
-./install_nginx.sh
+sudo ./install_nginx.sh
 ```
 
 **部署时间**: 约 30 秒（纯 apt 安装，无需编译）
@@ -364,11 +364,11 @@ Nginx 部署完成后，可以继续部署以下服务：
 
 | 序号 | 服务 | 用途 | 部署命令 |
 |------|------|------|---------|
-| Docker | 容器运行环境 | `cd ../docker && ./install_docker.sh` |
-| CliproxyAPI | AI API 转发 | `cd ../cliproxyapi && ./install_cliproxyapi_v2.sh` |
-| New-API | AI 模型网关 | `cd ../new-api && ./install_newapi_docker.sh` |
+| Docker | 容器运行环境 | `cd ../docker && sudo ./install_docker.sh` |
+| CliproxyAPI | AI API 转发 | `cd ../cliproxyapi && sudo ./install_cliproxyapi_v2.sh` |
+| New-API | AI 模型网关 | `cd ../new-api && sudo ./install_newapi_docker.sh` |
 
-**完整部署流程**: 请参考根目录的 `deploy_cluster.sh` 脚本进行引导式部署。
+**完整部署流程**: 请参考根目录的 `install.sh` 脚本进行引导式部署。
 
 ---
 

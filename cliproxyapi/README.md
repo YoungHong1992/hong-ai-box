@@ -19,12 +19,12 @@ CliproxyAPI 是一款轻量级 AI API 转发代理，将多个 AI 服务商（Op
 ```bash
 cd cliproxyapi
 chmod +x install_cliproxyapi_v2.sh
-./install_cliproxyapi_v2.sh
+sudo ./install_cliproxyapi_v2.sh
 ```
 
 ### 前置条件
 
-- 已部署 `nginx`
+- 已部署并启动 `nginx`（可先进入 `../nginx` 运行 `sudo ./install_nginx.sh`）
 - 域名模式需 DNS 已解析；IP 模式无需域名
 - 至少准备一个 AI 服务商的 API Key
 
