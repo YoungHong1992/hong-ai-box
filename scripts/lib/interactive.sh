@@ -47,6 +47,55 @@ validate_domain() {
     return 0
 }
 
+validate_ip() {
+    local ip="$1"
+    local IFS=. octet
+
+    if [ -z "$ip" ]; then
+        log_error "IP 不能为空。"
+        return 1
+    fi
+
+    if [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        for octet in $ip; do
+            if [ "$octet" -gt 255 ]; then
+                log_error "IPv4 地址格式不正确: $ip"
+                return 1
+            fi
+        done
+        return 0
+    fi
+
+    if [[ "$ip" == *:* && "$ip" =~ ^[0-9A-Fa-f:]+$ ]]; then
+        return 0
+    fi
+
+    log_error "IP 地址格式不正确: $ip"
+    return 1
+}
+
+validate_port() {
+    local port="$1"
+    if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+        log_error "端口必须是 1-65535 的数字: $port"
+        return 1
+    fi
+    return 0
+}
+
+validate_sni() {
+    local sni="$1"
+    validate_domain "$sni"
+}
+
+escape_double_quoted() {
+    local value="$1"
+    value=${value//\\/\\\\}
+    value=${value//\"/\\\"}
+    value=${value//$'\t'/\\t}
+    printf '%s' "$value"
+}
+
 # 选择访问模式：返回 "domain" / "ip" / "http"
 # 注意：所有提示输出到 stderr，仅结果输出到 stdout，以便命令替换正确捕获
 select_access_mode() {
@@ -85,10 +134,12 @@ get_domain_for_mode() {
         ip|http)
             local server_ip
             server_ip=$(detect_server_ip)
-            if [ -z "$server_ip" ]; then
-                log_error "无法获取服务器 IP，请手动输入。" >&2
-                read -r -p "请输入服务器 IP 地址: " server_ip
-                [ -z "$server_ip" ] && { log_error "IP 不能为空。" >&2; exit 1; }
+            if [ -z "$server_ip" ] || ! validate_ip "$server_ip"; then
+                log_error "无法获取有效服务器 IP，请手动输入。" >&2
+                while true; do
+                    read -r -p "请输入服务器 IP 地址: " server_ip
+                    validate_ip "$server_ip" && break
+                done
             fi
             echo "" >&2
             echo -e "检测到服务器 IP: ${GREEN}$server_ip${NC}" >&2
@@ -105,12 +156,18 @@ get_domain_for_mode() {
             case "$ip_confirm" in
                 [Yy]|"") echo "$server_ip" ;;
                 [Nn])
-                    read -r -p "请输入 IP 地址: " domain
-                    [ -z "$domain" ] && { log_error "IP 不能为空。" >&2; exit 1; }
+                    while true; do
+                        read -r -p "请输入 IP 地址: " domain
+                        validate_ip "$domain" && break
+                    done
                     echo "$domain"
                     ;;
                 *)
-                    echo "$ip_confirm"
+                    if validate_ip "$ip_confirm"; then
+                        echo "$ip_confirm"
+                    else
+                        exit 1
+                    fi
                     ;;
             esac
             ;;

@@ -3,7 +3,7 @@
 ################################################################################
 #
 # New-API Docker 卸载脚本
-# 版本: v3.5.0
+# 版本: v4.0.0
 #
 # 功能说明：
 #   1. 停止并删除所有 New-API 容器
@@ -58,7 +58,7 @@ if [ ! -d "$SERVICE_DIR" ]; then
 fi
 
 # ==================== 欢迎界面 ====================
-clear
+clear 2>/dev/null || true
 echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${RED}   New-API Docker 卸载程序 v${COMMON_VERSION}${NC}"
 echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -89,7 +89,11 @@ log_step "[1/7] 检测当前服务状态..."
 
 cd "$SERVICE_DIR"
 
-DOMAIN=$(find /etc/nginx/conf.d/ -maxdepth 1 -name "*newapi*.conf" 2>/dev/null | head -1 | xargs -I {} basename {} .conf 2>/dev/null || echo "")
+NGINX_CONF=$(find /etc/nginx/conf.d/ -maxdepth 1 -name "*.conf" -exec grep -l "NEW-API-START" {} \; 2>/dev/null | head -1 || echo "")
+DOMAIN=""
+if [ -n "$NGINX_CONF" ]; then
+    DOMAIN=$(grep "server_name" "$NGINX_CONF" 2>/dev/null | head -1 | awk '{print $2}' | sed 's/;//g' || echo "")
+fi
 
 if [ -z "$DOMAIN" ]; then
     DOMAIN="unknown"
@@ -184,7 +188,7 @@ echo ""
 # ==================== 删除 Nginx 配置 ====================
 log_step "[5/7] 删除 Nginx 配置..."
 
-NGINX_CONF=$(find /etc/nginx/conf.d/ -maxdepth 1 -name "*newapi*.conf" 2>/dev/null | head -1 || echo "")
+NGINX_CONF=$(find /etc/nginx/conf.d/ -maxdepth 1 -name "*.conf" -exec grep -l "NEW-API-START" {} \; 2>/dev/null | head -1 || echo "")
 
 if [ -n "$NGINX_CONF" ] && [ -f "$NGINX_CONF" ]; then
     rm -f "$NGINX_CONF"

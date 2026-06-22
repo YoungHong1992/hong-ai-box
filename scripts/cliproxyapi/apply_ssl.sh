@@ -3,7 +3,7 @@
 ################################################################################
 #
 # 通用 SSL 证书申请工具
-# 版本: v3.5.0
+# 版本: v4.0.0
 #
 # 功能说明：
 #   - 为任意域名申请 Let's Encrypt ECC-256 证书
@@ -87,6 +87,8 @@ if ! systemctl is-active --quiet nginx; then
     echo -e "请先启动 Nginx: systemctl start nginx"
     exit 1
 fi
+
+ensure_commands curl openssl
 
 # ==================== 交互式输入 ====================
 

@@ -19,10 +19,12 @@ jobs:
       - name: Generate version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
-      - name: Bundle scripts
+      - name: Bundle project
         run: |
-          tar czf hong-ai-box-scripts.tar.gz scripts/
-          sha256sum hong-ai-box-scripts.tar.gz > checksums.txt
+          mkdir -p dist/hong-ai-box
+          cp -a install.sh scripts README.md docs LICENSE dist/hong-ai-box/
+          tar czf hong-ai-box.tar.gz -C dist hong-ai-box
+          sha256sum hong-ai-box.tar.gz > checksums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -34,21 +36,17 @@ jobs:
             ### 方式一：一键安装（推荐）
 
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/YoungHong1992/hong-ai-box/main/install.sh | sudo bash
+            curl -fsSL https://raw.githubusercontent.com/YoungHong1992/hong-ai-box/${{ github.ref_name }}/install.sh | sudo env HONGAIBOX_REF=${{ github.ref_name }} bash
             ```
+
+            > 该入口会自动下载同一 tag 的完整安装包后再启动交互式安装。
 
             ### 方式二：下载完整包
 
             ```bash
-            # 下载并解压
-            curl -fsSLO https://github.com/YoungHong1992/hong-ai-box/releases/latest/download/hong-ai-box-scripts.tar.gz
-            tar xzf hong-ai-box-scripts.tar.gz
-
-            # 复制 install.sh 到项目根目录（也可从仓库直接下载）
-            curl -fsSLO https://raw.githubusercontent.com/YoungHong1992/hong-ai-box/main/install.sh
-            chmod +x install.sh
-
-            # 运行
+            curl -fsSLO https://github.com/YoungHong1992/hong-ai-box/releases/latest/download/hong-ai-box.tar.gz
+            tar xzf hong-ai-box.tar.gz
+            cd hong-ai-box
             sudo ./install.sh
             ```
 
@@ -57,7 +55,6 @@ jobs:
             ```bash
             git clone https://github.com/YoungHong1992/hong-ai-box.git
             cd hong-ai-box
-            chmod +x install.sh
             sudo ./install.sh
             ```
 
@@ -73,7 +70,7 @@ jobs:
             | Science | VLESS + XTLS-Vision + Reality | 极低 |
 
           files: |
-            hong-ai-box-scripts.tar.gz
+            hong-ai-box.tar.gz
             checksums.txt
           draft: false
           prerelease: false

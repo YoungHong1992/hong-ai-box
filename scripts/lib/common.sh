@@ -4,7 +4,7 @@
 #
 # VPS 部署工具 — 公共函数库入口
 #
-# 版本: v3.5.0
+# 版本: v4.0.0
 # 用法:
 #   SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 #   source "$SCRIPT_DIR/../lib/common.sh"

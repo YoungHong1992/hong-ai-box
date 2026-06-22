@@ -67,60 +67,72 @@ apply_ssl_certificate() {
                 source ~/.bashrc 2>/dev/null || true
             fi
 
-            local temp_conf="/etc/nginx/conf.d/${domain}.conf"
-            cat > "$temp_conf" <<'NGINX_TEMP'
+            local safe_domain temp_conf default_site default_backup default_moved=false
+            safe_domain=$(printf '%s' "$domain" | tr -c 'A-Za-z0-9_.-' '_')
+            temp_conf="/etc/nginx/conf.d/00-acme-${safe_domain}.conf"
+            default_site="/etc/nginx/sites-enabled/default"
+            default_backup="/etc/nginx/sites-enabled/default.disabled-by-ssl"
+
+            cat > "$temp_conf" <<NGINX_TEMP
 server {
     listen 80;
-    server_name _PLACEHOLDER_;
+    server_name $domain;
     location /.well-known/acme-challenge/ {
         root /var/www/acme;
     }
 }
 NGINX_TEMP
-            sed -i "s/_PLACEHOLDER_/${domain}/g" "$temp_conf"
 
             mkdir -p /var/www/acme
             chmod 755 /var/www/acme
-            # 临时禁用默认站点（Debian/Ubuntu），避免80端口冲突
-            if [ -f /etc/nginx/sites-enabled/default ]; then
-                mv /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/default.disabled-by-ssl 2>/dev/null || true
+            # 临时禁用默认站点（Debian/Ubuntu），避免 80 端口默认站点抢占 ACME 验证。
+            if [ -f "$default_site" ]; then
+                mv "$default_site" "$default_backup" 2>/dev/null && default_moved=true || true
             fi
             systemctl reload nginx >/dev/null 2>&1 || true
 
-            if ~/.acme.sh/acme.sh --issue --server letsencrypt -d "$domain" --webroot /var/www/acme --keylength ec-256 2>&1; then
+            if ~/.acme.sh/acme.sh --issue --server letsencrypt -d "$domain" --webroot /var/www/acme --keylength ec-256 >&2; then
                 ~/.acme.sh/acme.sh --install-cert -d "$domain" --ecc \
                     --key-file       "$ssl_dir/key.pem" \
                     --fullchain-file "$ssl_dir/fullchain.pem" \
                     --reloadcmd     "systemctl reload nginx" >/dev/null 2>&1 || true
 
                 if [ -f "$ssl_dir/fullchain.pem" ]; then
-                log_success "SSL 证书申请成功 (Let's Encrypt ECC-256)"
-                    # 恢复默认站点
-                    if [ -f /etc/nginx/sites-enabled/default.disabled-by-ssl ]; then
-                        mv /etc/nginx/sites-enabled/default.disabled-by-ssl /etc/nginx/sites-enabled/default 2>/dev/null || true
-                        systemctl reload nginx >/dev/null 2>&1 || true
+                    log_success "SSL 证书申请成功 (Let's Encrypt ECC-256)"
+                    rm -f "$temp_conf"
+                    if [ "$default_moved" = true ] && [ -f "$default_backup" ]; then
+                        mv "$default_backup" "$default_site" 2>/dev/null || true
                     fi
+                    systemctl reload nginx >/dev/null 2>&1 || true
                     echo "Let's Encrypt (ECC-256)"
                     return 0
                 fi
             fi
 
             log_warning "Let's Encrypt 申请失败，降级为自签名证书..."
-            # 恢复默认站点
-            if [ -f /etc/nginx/sites-enabled/default.disabled-by-ssl ]; then
-                mv /etc/nginx/sites-enabled/default.disabled-by-ssl /etc/nginx/sites-enabled/default 2>/dev/null || true
+            rm -f "$temp_conf"
+            if [ "$default_moved" = true ] && [ -f "$default_backup" ]; then
+                mv "$default_backup" "$default_site" 2>/dev/null || true
             fi
+            systemctl reload nginx >/dev/null 2>&1 || true
             ;;
         ip)
             log_info "生成自签名证书 (IP 模式)..."
             ;;
     esac
 
+    local san
+    if validate_ip "$domain" 2>/dev/null; then
+        san="IP:$domain"
+    else
+        san="DNS:$domain"
+    fi
+
     if openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
         -keyout "$ssl_dir/key.pem" \
         -out "$ssl_dir/fullchain.pem" \
         -subj "/CN=$domain" \
-        -addext "subjectAltName=IP:$domain" >/dev/null 2>&1; then
+        -addext "subjectAltName=$san" >/dev/null 2>&1; then
         log_success "自签名证书生成成功"
         echo "自签名证书"
     else

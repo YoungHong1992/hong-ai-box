@@ -3,7 +3,7 @@
 ################################################################################
 #
 # New-API Docker Alpha 版本升级脚本
-# 版本: v3.5.0
+# 版本: v4.0.0
 #
 # 功能说明：
 #   1. 自动从 GitHub API 获取最新的 alpha 版本号
@@ -63,7 +63,7 @@ if [ -z "$COMPOSE_CMD" ]; then
 fi
 
 # ==================== 欢迎 ====================
-clear
+clear 2>/dev/null || true
 echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${MAGENTA}   New-API Alpha 版本升级程序 v${COMMON_VERSION}${NC}"
 echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -210,7 +210,7 @@ REMOVED_IMAGES=$(docker image prune -f 2>&1 | grep "Total reclaimed space" || ec
 [ -n "$REMOVED_IMAGES" ] && log_success "清理完成" && echo "$REMOVED_IMAGES"
 
 # ==================== 完成 ====================
-clear
+clear 2>/dev/null || true
 echo -e "${GREEN}"
 echo "================================================"
 echo "       New-API Alpha 升级完成！(v${COMMON_VERSION})"

@@ -3,7 +3,7 @@
 ################################################################################
 #
 # New-API Docker 部署脚本
-# 版本: v3.5.0
+# 版本: v4.0.0
 #
 # 功能说明：
 #   1. 部署 New-API AI 模型聚合管理系统（Docker 方式）
@@ -75,16 +75,18 @@ DOCKER_NETWORK="ai-services"
 check_root
 setup_logging "newapi-install"
 
-ensure_commands curl wget
+ensure_commands curl wget openssl
 
-if ! command -v docker &> /dev/null; then
-    log_warning "未检测到 Docker，尝试自动安装..."
+if ! command -v docker &> /dev/null \
+    || ! systemctl is-active --quiet docker 2>/dev/null \
+    || [ -z "$(detect_compose_cmd)" ]; then
+    log_warning "Docker/Compose 环境未就绪，尝试自动修复..."
     DOCKER_INSTALLER="$SCRIPT_DIR/../docker/install_docker.sh"
     if [ -f "$DOCKER_INSTALLER" ]; then
-        # shellcheck source=docker/install_docker.sh
+        # shellcheck source=scripts/docker/install_docker.sh
         source "$DOCKER_INSTALLER"
         if ! ensure_docker; then
-            log_error "Docker 自动安装失败。"
+            log_error "Docker 自动安装/修复失败。"
             exit 1
         fi
     else
@@ -104,11 +106,13 @@ if ! command -v nginx &> /dev/null; then
     exit 1
 fi
 
-# 端口检查
-ensure_port_available "$NEWAPI_PORT" "New-API"
+# 端口检查（覆盖安装时允许现有 New-API 占用端口）
+if [ ! -f "$SERVICE_DIR/docker-compose.yml" ]; then
+    ensure_port_available "$NEWAPI_PORT" "New-API"
+fi
 
 # ==================== 欢迎 ====================
-clear
+clear 2>/dev/null || true
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${CYAN}   New-API Docker 部署程序 v${COMMON_VERSION}${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -156,6 +160,19 @@ else
 fi
 
 SERVER_IP=$(detect_server_ip)
+
+case "$MODE" in
+    domain) validate_domain "$DOMAIN" || exit 1 ;;
+    ip|http) validate_ip "$DOMAIN" || exit 1 ;;
+    *) log_error "未知访问模式: $MODE"; exit 1 ;;
+esac
+
+PREEXISTING_CONF="$(find_nginx_conf_by_server_name "$DOMAIN" "$CONF_D" || true)"
+if [ -n "$PREEXISTING_CONF" ] && ! grep -q "NEW-API-START" "$PREEXISTING_CONF"; then
+    log_error "Nginx server_name 已被其他配置占用: $PREEXISTING_CONF"
+    log_error "请为 New-API 使用独立域名，避免覆盖其他服务。"
+    exit 1
+fi
 
 echo ""
 
@@ -451,6 +468,14 @@ fi
 
 CONF_FILE="$CONF_D/${DOMAIN}.conf"
 
+EXISTING_DOMAIN_CONF="$(find_nginx_conf_by_server_name "$DOMAIN" "$CONF_D" || true)"
+if [ -n "$EXISTING_DOMAIN_CONF" ] && ! grep -q "NEW-API-START" "$EXISTING_DOMAIN_CONF"; then
+    log_error "Nginx server_name 已被其他配置占用: $EXISTING_DOMAIN_CONF"
+    log_error "请为 New-API 使用独立域名，避免覆盖其他服务。"
+    exit 1
+fi
+[ -f "$CONF_FILE" ] && backup_file "$CONF_FILE"
+
 # 公共 location 块
 read -r -d '' NGINX_LOCATION <<'NGX_LOC_EOF' || true
     #NEW-API-START
@@ -646,7 +671,7 @@ chmod 600 "$INFO_FILE"
 log_success "配置信息已保存: $INFO_FILE"
 
 # ==================== 完成 ====================
-clear
+clear 2>/dev/null || true
 cat "$INFO_FILE"
 echo ""
 

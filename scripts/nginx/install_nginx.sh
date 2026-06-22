@@ -3,7 +3,7 @@
 ################################################################################
 #
 # Nginx 安装与系统优化脚本
-# 版本: v3.5.0
+# 版本: v4.0.0
 #
 # 功能说明：
 #   1. 系统内核优化：开启 BBR、优化 TCP 连接、提升文件描述符限制
@@ -118,15 +118,13 @@ log_step "[2/3] 安装 Nginx (nginx.org 官方主线包)..."
 
 # 检测系统并添加 nginx.org 官方仓库
 if [ -f /etc/debian_version ]; then
-    # 检测是否需要安装依赖
-    if ! command -v curl &> /dev/null; then
-        apt-get update -y -qq
-        apt-get install -y -qq curl gnupg2 ca-certificates lsb-release
-    fi
+    # 安装必要依赖（curl 已存在时也要确保 gpg/证书工具存在）
+    apt-get update -y -qq
+    apt-get install -y -qq curl gnupg2 ca-certificates lsb-release
 
     # 添加 nginx.org GPG key
     curl -fsSL --connect-timeout 30 https://nginx.org/keys/nginx_signing.key \
-        | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
+        | gpg --dearmor --yes -o /usr/share/keyrings/nginx-archive-keyring.gpg
 
     # 添加 mainline 仓库（支持 HTTP/3）
     . /etc/os-release
