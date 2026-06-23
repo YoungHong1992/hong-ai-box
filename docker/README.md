@@ -1,7 +1,7 @@
 # Docker 自动安装指南
 
 > **版本**: v1.0
-> **更新日期**: 2026-06-22
+> **更新日期**: 2026-06-23
 > **适用场景**: VPS 集群 Docker 服务基础环境
 
 ---
@@ -19,7 +19,7 @@
 
 ## 项目简介
 
-本脚本为 VPS 集群项目的 **Docker 环境组件**，为 New-API 等容器化服务提供运行环境。
+本脚本为 VPS 集群项目的 **Docker 环境组件**，为 CliproxyAPI、New-API 等容器化服务提供运行环境。
 
 ### 核心功能
 
@@ -46,6 +46,7 @@
 ```
 
 以下服务依赖 Docker 环境：
+- **cliproxyapi**: 默认 Docker Compose 部署（仍可选择裸机二进制 + Systemd）
 - **new-api**: Docker Compose 部署（PostgreSQL + Redis + New-API）
 
 ---
@@ -210,4 +211,4 @@ chmod +x /usr/local/bin/docker-compose
 ---
 
 **文档维护**: Claude Code
-**最后更新**: 2026-06-22
+**最后更新**: 2026-06-23
