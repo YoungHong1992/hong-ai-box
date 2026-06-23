@@ -22,7 +22,7 @@ jobs:
       - name: Bundle project
         run: |
           mkdir -p dist/hong-ai-box
-          cp -a install.sh nginx docker cliproxyapi new-api pi-coding-agent science README.md docs LICENSE dist/hong-ai-box/
+          cp -a install.sh maintenance nginx docker cliproxyapi new-api pi-coding-agent science README.md docs LICENSE dist/hong-ai-box/
           tar czf hong-ai-box.tar.gz -C dist hong-ai-box
           sha256sum hong-ai-box.tar.gz > checksums.txt
 
@@ -62,9 +62,10 @@ jobs:
 
             | 组件 | 描述 | 资源需求 |
             |------|------|----------|
+            | Maintenance | fail2ban / swap / journald 限制 / Docker 日志轮转 | 基础维护 |
             | Nginx (HTTP/3) | 高性能 Web 服务器 + 反向代理 | 512MB 内存 |
             | Docker | Docker Engine + Compose 插件 | 无额外需求 |
-            | CliproxyAPI | 轻量 AI API 转发代理 (~50MB) | 256MB 内存 |
+            | CliproxyAPI | 轻量 AI API 转发代理，默认 Docker Compose，可选裸机 | 256MB 内存 |
             | New-API | AI 模型网关与资产管理系统 | ≥ 1GB 内存 |
             | Pi | 终端 AI 编程助手 | 500MB 磁盘 |
 

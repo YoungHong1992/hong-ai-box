@@ -633,8 +633,28 @@ fi
 
 echo ""
 
-# ==================== 1. 停止并删除 Systemd 服务 ====================
-log_step "[1/6] 停止并删除 Systemd 服务..."
+# ==================== 1. 停止并删除 Docker Compose 服务 ====================
+log_step "[1/7] 停止并删除 Docker Compose 服务..."
+
+DOCKER_SERVICE_DIR="/opt/docker-services/cliproxyapi"
+COMPOSE_CMD=$(detect_compose_cmd)
+
+if [ -f "$DOCKER_SERVICE_DIR/docker-compose.yml" ] && [ -n "$COMPOSE_CMD" ]; then
+    if [ -f "$DOCKER_SERVICE_DIR/config.yaml" ]; then
+        echo -e "${YELLOW}当前 Docker 部署 API 密钥:${NC}"
+        grep -A 2 "api-keys:" "$DOCKER_SERVICE_DIR/config.yaml" 2>/dev/null | grep "sk-" | sed 's/^/  /' || true
+    fi
+    (cd "$DOCKER_SERVICE_DIR" && $COMPOSE_CMD down) || true
+    rm -rf "$DOCKER_SERVICE_DIR"
+    log_success "Docker Compose 服务与目录已删除: $DOCKER_SERVICE_DIR"
+elif [ -f "$DOCKER_SERVICE_DIR/docker-compose.yml" ]; then
+    log_warning "检测到 Docker Compose 配置，但未找到 compose 命令，请手动清理: $DOCKER_SERVICE_DIR"
+else
+    log_info "未检测到 Docker Compose 部署，跳过"
+fi
+
+# ==================== 2. 停止并删除 Systemd 服务 ====================
+log_step "[2/7] 停止并删除 Systemd 服务..."
 
 if systemctl list-units --full -all 2>/dev/null | grep -q "cliproxyapi.service"; then
     systemctl stop cliproxyapi 2>/dev/null || true
@@ -650,16 +670,16 @@ if [ -f /etc/systemd/system/cliproxyapi.service ]; then
     log_success "服务文件已删除"
 fi
 
-# ==================== 2. 删除程序文件 ====================
-log_step "[2/6] 删除程序文件..."
+# ==================== 3. 删除程序文件 ====================
+log_step "[3/7] 删除程序文件..."
 
 if [ -d /opt/cliproxyapi ]; then
     rm -rf /opt/cliproxyapi
     log_success "程序目录已删除: /opt/cliproxyapi"
 fi
 
-# ==================== 3. 删除配置文件 ====================
-log_step "[3/6] 删除配置文件..."
+# ==================== 4. 删除配置文件 ====================
+log_step "[4/7] 删除配置文件..."
 
 if [ -d /etc/cliproxyapi ]; then
     if [ -f /etc/cliproxyapi/config.yaml ]; then
@@ -670,8 +690,8 @@ if [ -d /etc/cliproxyapi ]; then
     log_success "配置目录已删除: /etc/cliproxyapi"
 fi
 
-# ==================== 4-5. 删除数据和日志 ====================
-log_step "[4/6] 删除数据与日志..."
+# ==================== 5. 删除数据和日志 ====================
+log_step "[5/7] 删除数据与日志..."
 
 rm -rf /var/lib/cliproxyapi 2>/dev/null || true
 log_success "数据目录已删除"
@@ -681,7 +701,7 @@ rm -f /var/log/nginx/cliproxyapi_*.log 2>/dev/null || true
 log_success "日志已清理"
 
 # ==================== 6. 删除 Nginx 配置 ====================
-log_step "[5/6] 删除 Nginx 配置..."
+log_step "[6/7] 删除 Nginx 配置..."
 
 NGINX_CONF_DIR="/etc/nginx/conf.d"
 CLIPROXY_CONFIGS=$(find "$NGINX_CONF_DIR" -name "*.conf" -exec grep -l "cliproxyapi\|8317" {} \; 2>/dev/null || true)
@@ -728,7 +748,7 @@ else
 fi
 
 # ==================== 7. 清理源码（可选） ====================
-log_step "[6/6] 清理残留..."
+log_step "[7/7] 清理残留..."
 
 if [ -d /usr/local/src/CLIProxyAPI ]; then
     echo ""
@@ -746,7 +766,7 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 echo -e "${GREEN}   卸载完成！${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo -e "${CYAN}已删除:${NC} Systemd 服务 / 程序 / 配置 / 数据 / 日志 / Nginx 配置"
+echo -e "${CYAN}已删除:${NC} Docker Compose 服务 / Systemd 服务 / 程序 / 配置 / 数据 / 日志 / Nginx 配置"
 echo -e "${CYAN}保留:${NC} Nginx 主程序 / 其他服务 / SSL 证书（如选择）"
 echo ""
 log_success "日志已保存: $DEPLOY_LOG_FILE"

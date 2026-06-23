@@ -1,7 +1,7 @@
 # CliproxyAPI 轻量 AI API 代理
 
 > **版本**: v2.1
-> **部署方式**: 二进制 + Systemd + Nginx 反代
+> **部署方式**: 默认 Docker Compose + Nginx 反代；可选二进制 + Systemd
 > **资源占用**: ~50MB 内存
 
 ---
@@ -19,12 +19,21 @@ CliproxyAPI 是一款轻量级 AI API 转发代理，将多个 AI 服务商（Op
 ```bash
 cd cliproxyapi
 chmod +x install.sh
-sudo ./install.sh
+sudo ./install.sh              # 默认 Docker Compose
+```
+
+### CPA 裸机安装选项
+
+```bash
+cd cliproxyapi
+sudo HONGAIBOX_CLIPROXY_DEPLOY_MODE=bare ./install.sh
 ```
 
 ### 前置条件
 
 - 已部署并启动 `nginx`（可先进入 `../nginx` 运行 `sudo ./install.sh`）
+- 默认 Docker Compose 部署需已部署并启动 `docker` + Compose（可先进入 `../docker` 运行 `sudo ./install.sh`）
+- 裸机模式不依赖 Docker，会使用二进制文件 + Systemd
 - 域名模式需 DNS 已解析；IP 模式无需域名
 - 至少准备一个 AI 服务商的 API Key
 
@@ -41,6 +50,17 @@ sudo ./install.sh
 ---
 
 ## 服务管理
+
+默认 Docker Compose：
+
+```bash
+cd /opt/docker-services/cliproxyapi
+docker compose ps
+docker compose logs -f cliproxyapi
+docker compose restart
+```
+
+裸机 Systemd：
 
 ```bash
 systemctl status cliproxyapi
@@ -67,10 +87,11 @@ journalctl -u cliproxyapi -f
 
 | 文件 | 说明 |
 |------|------|
-| `install.sh` | 安装/升级脚本（自动检测） |
+| `install.sh` | 安装/升级脚本（默认 Docker Compose，可选裸机） |
+| `docker-compose.yml` | Docker Compose 参考模板 |
 | `apply_ssl.sh` | SSL 证书工具 |
 | `uninstall_cliproxyapi.sh` | 卸载脚本 |
 
 ---
 
-**最后更新**: 2026-06-22
+**最后更新**: 2026-06-23

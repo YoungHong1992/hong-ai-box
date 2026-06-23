@@ -1,7 +1,7 @@
 # hongaibox — 洪哥的 AI 工具箱
 
 > **版本**: v4.0.0
-> **更新日期**: 2026-06-22
+> **更新日期**: 2026-06-23
 > **许可证**: MIT
 
 一套面向云服务器的 AI 工具自动化部署脚本，选择服务 → 填写配置 → 一键安装，三步完成整套 AI 集群的部署。
@@ -12,9 +12,10 @@
 
 - 🚀 **一键部署**：一个脚本，勾选服务即可安装常用 AI 组件
 - 🎨 **彩色终端界面**：清晰的交互式引导，告别繁琐的命令行问答
-- 🔒 **安全基线**：密码/密钥自动生成，TLS 1.2+，自动 SSL 证书
+- 🔒 **安全基线**：fail2ban、swap、日志限制、TLS 1.2+，自动 SSL 证书
 - 📦 **零依赖**：纯 Bash 实现，兼容 Debian/Ubuntu，无需安装额外运行时
 - 🧩 **模块化**：每个服务可独立安装，也可通过总入口一键部署
+- 🐳 **Compose 优先**：CPA / New-API 默认采用 Docker Compose，CPA 保留裸机安装选项
 
 ---
 
@@ -50,14 +51,16 @@ sudo ./install.sh
 每个组件目录都可独立进入并运行统一命名的 `install.sh`；脚本已自包含，不依赖外部公共脚本。
 
 ```bash
-cd nginx && sudo ./install.sh              # 安装 Nginx
+cd maintenance && sudo ./install.sh        # 安装服务器维护基线
+cd ../nginx && sudo ./install.sh           # 安装 Nginx
 cd ../docker && sudo ./install.sh          # 安装 Docker
-cd ../cliproxyapi && sudo ./install.sh     # 安装 CliproxyAPI
+cd ../cliproxyapi && sudo ./install.sh     # 安装 CliproxyAPI（默认 Docker Compose）
+# CPA 裸机安装：cd ../cliproxyapi && sudo HONGAIBOX_CLIPROXY_DEPLOY_MODE=bare ./install.sh
 cd ../new-api && sudo ./install.sh         # 安装 New-API
 cd ../pi-coding-agent && sudo ./install.sh # 安装 Pi
 ```
 
-> CliproxyAPI / New-API 需要已安装 Nginx；New-API 还需要 Docker + Compose。缺少依赖时，对应脚本会提示先安装依赖后再继续。
+> CliproxyAPI / New-API 需要已安装 Nginx；默认 Docker Compose 部署还需要 Docker + Compose。缺少依赖时，对应脚本会提示先安装依赖后再继续。CPA 如需裸机二进制 + Systemd，可设置 `HONGAIBOX_CLIPROXY_DEPLOY_MODE=bare`。
 
 ---
 
@@ -66,6 +69,7 @@ cd ../pi-coding-agent && sudo ./install.sh # 安装 Pi
 ```
 hong-ai-box/
 ├── install.sh                  # 🎯 总入口：部署常用 AI 组件
+├── maintenance/                # 服务器维护基线 (fail2ban / swap / 日志限制)
 ├── nginx/                      # Nginx (HTTP/3 + BBR)
 ├── docker/                     # Docker Engine + Compose
 ├── cliproxyapi/                # 轻量 AI API 转发代理
@@ -81,10 +85,11 @@ hong-ai-box/
 
 | 组件 | 描述 | 资源需求 |
 |------|------|----------|
+| **Maintenance** | fail2ban、swap、journald 限制、Docker 日志轮转 | 基础维护 |
 | **Nginx** | HTTP/3 (QUIC) + BBR 优化，所有服务的基础设施 | 512MB 内存 |
 | **Docker** | Docker Engine + Compose 插件 | 无额外需求 |
-| **CliproxyAPI** | 轻量 AI API 转发代理 (~50MB) | 256MB 内存 |
-| **New-API** | AI 模型网关与资产管理系统 | ≥ 1GB 内存 |
+| **CliproxyAPI** | 轻量 AI API 转发代理，默认 Docker Compose，可选裸机 | 256MB 内存 |
+| **New-API** | AI 模型网关与资产管理系统，Docker Compose | ≥ 1GB 内存 |
 | **Pi** | 终端 AI 编程助手 | 500MB 磁盘 |
 
 ---
@@ -93,11 +98,12 @@ hong-ai-box/
 
 ```
 1. 检测 → 自动发现已安装的服务
-2. 选择 → 输入数字选择要安装的服务（支持多选）
-3. 配置 → 设置访问方式（域名/IP/HTTP）和各项参数
-4. 确认 → 查看配置总览，确认无误
-5. 安装 → 按依赖顺序自动执行安装脚本
-6. 完成 → 显示总结和常用管理命令
+2. 选择 → 输入表格序号选择 1 个服务；已安装服务也可选择
+3. 概览 → 查看该服务当前状态；确认继续安装/覆盖，或返回首页
+4. 配置 → 设置访问方式（域名/IP/HTTP）和各项参数
+5. 确认 → 查看配置总览，确认无误
+6. 安装 → 按依赖顺序自动执行安装脚本
+7. 完成 → 显示总结和常用管理命令，可回到首页继续安装其他服务
 ```
 
 > 同时部署 CliproxyAPI 与 New-API 时，请为每个 Web 服务准备独立域名，避免多个服务争用同一个 Nginx `server_name` 和 `/` 路由。
@@ -109,6 +115,9 @@ hong-ai-box/
 - 所有密码和密钥使用加密安全随机数生成
 - SSL/TLS 最低版本: TLSv1.2
 - 安装日志自动记录到 `/var/log/vps-deploy/`
+- fail2ban 默认启用 SSH 防暴力破解
+- swap 自动按内存配置，降低小内存 VPS OOM 风险
+- journald / Docker 日志轮转限制磁盘占用
 - Nginx 配置先备份再覆盖
 - 支持域名（Let's Encrypt）和 IP（自签名）两种证书模式
 
@@ -131,4 +140,4 @@ find . -path ./.git -prune -o -name '*.sh' -print0 | xargs -0 shellcheck -x -S w
 
 ---
 
-**最后更新**: 2026-06-22
+**最后更新**: 2026-06-23
