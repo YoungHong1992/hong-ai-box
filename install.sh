@@ -105,6 +105,8 @@ bootstrap_full_repo() {
         || [ ! -f "$root_dir/cliproxyapi/install.sh" ] \
         || [ ! -f "$root_dir/new-api/install.sh" ] \
         || [ ! -f "$root_dir/pi-coding-agent/install.sh" ] \
+        || [ ! -f "$root_dir/lib/common.sh" ] \
+        || [ ! -f "$root_dir/lib/crypto.sh" ] \
         || [ ! -f "$root_dir/lib/credentials.sh" ]; then
         echo "[ERROR] 下载的安装包不完整。" >&2
         rm -rf "$tmp_dir"
@@ -133,6 +135,8 @@ if [ ! -f "$INSTALL_DIR/maintenance/install.sh" ] \
     || [ ! -f "$INSTALL_DIR/cliproxyapi/install.sh" ] \
     || [ ! -f "$INSTALL_DIR/new-api/install.sh" ] \
     || [ ! -f "$INSTALL_DIR/pi-coding-agent/install.sh" ] \
+    || [ ! -f "$INSTALL_DIR/lib/common.sh" ] \
+    || [ ! -f "$INSTALL_DIR/lib/crypto.sh" ] \
     || [ ! -f "$INSTALL_DIR/lib/credentials.sh" ]; then
     bootstrap_full_repo "$@"
 fi

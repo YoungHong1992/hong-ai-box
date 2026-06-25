@@ -15,6 +15,9 @@ else
   printf '== shellcheck skipped: not installed ==\n'
 fi
 
+printf '== common and crypto helpers ==\n'
+"$ROOT_DIR/tests/test-common-crypto.sh"
+
 printf '== credentials helpers ==\n'
 "$ROOT_DIR/tests/test-credentials.sh"
 

@@ -35,5 +35,6 @@ jobs:
 
       - name: Repository tests
         run: |
+          ./tests/test-common-crypto.sh
           ./tests/test-credentials.sh
           ./tests/test-hidden-modules.sh
