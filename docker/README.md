@@ -125,7 +125,7 @@ cd ..
 sudo ./install.sh
 ```
 
-各组件脚本均自包含，不再通过 `source` 引用 Docker 安装脚本；需要 Docker 的组件会在未检测到 Docker/Compose 时提示先安装 Docker。
+各组件脚本不再通过 `source` 引用 Docker 安装脚本；需要 Docker 的组件会在未检测到 Docker/Compose 时提示先安装 Docker。部分组件会复用仓库内 `lib/` 公共库，请在完整仓库内运行。
 
 ---
 

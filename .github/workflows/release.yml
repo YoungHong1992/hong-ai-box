@@ -22,7 +22,7 @@ jobs:
       - name: Bundle project
         run: |
           mkdir -p dist/hong-ai-box
-          cp -a install.sh maintenance nginx docker cliproxyapi new-api pi-coding-agent science README.md docs LICENSE dist/hong-ai-box/
+          cp -a install.sh lib maintenance nginx docker cliproxyapi new-api pi-coding-agent README.md docs LICENSE dist/hong-ai-box/
           tar czf hong-ai-box.tar.gz -C dist hong-ai-box
           sha256sum hong-ai-box.tar.gz > checksums.txt
 
