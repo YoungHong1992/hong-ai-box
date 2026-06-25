@@ -32,3 +32,8 @@ jobs:
         run: |
           ./install.sh --version
           ./install.sh -h >/dev/null
+
+      - name: Repository tests
+        run: |
+          ./tests/test-credentials.sh
+          ./tests/test-hidden-modules.sh

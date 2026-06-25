@@ -27,8 +27,13 @@
 
 set -euo pipefail
 
-# ==================== 自包含公共函数 ====================
-# 本脚本可独立运行，不依赖外部公共库。
+HONGAIBOX_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HONGAIBOX_REPO_DIR="$(cd "$HONGAIBOX_SCRIPT_DIR/.." && pwd)"
+# shellcheck source=../lib/credentials.sh
+source "$HONGAIBOX_REPO_DIR/lib/credentials.sh"
+
+# ==================== 公共函数 ====================
+# 本脚本可在完整仓库内独立运行，并复用 ../lib 公共库。
 # shellcheck disable=SC2034
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -786,7 +791,7 @@ log_info "正在生成安全随机密码..."
 DB_PASSWORD=$(generate_password 32)
 REDIS_PASSWORD=$(generate_password 32)
 SESSION_SECRET=$(generate_session_secret 48)
-log_success "密码已生成（将保存到信息文件）"
+log_success "密码已生成（将保存到凭据文件，不会输出到日志）"
 echo ""
 
 # 确认
@@ -1182,10 +1187,10 @@ else
     nginx -t 2>&1 || true
 fi
 
-# ==================== 生成信息文件 ====================
-log_step "[8/8] 生成配置信息文件..."
+# ==================== 生成凭据信息文件 ====================
+log_step "[8/8] 生成凭据信息文件..."
 
-INFO_FILE="$SERVICE_DIR/newapi_info.txt"
+CREDENTIALS_FILE="$SERVICE_DIR/hongaibox-credentials.txt"
 
 if [ "$USE_HTTP_ONLY" = true ]; then
     ACCESS_URL="http://$DOMAIN"
@@ -1195,7 +1200,7 @@ else
     ACCESS_URL="https://$DOMAIN"
 fi
 
-cat > "$INFO_FILE" <<INFO_EOF
+write_credentials_file "$CREDENTIALS_FILE" <<INFO_EOF
 ================================================
        New-API Docker 部署完成 (v${COMMON_VERSION})
 ================================================
@@ -1243,19 +1248,23 @@ https://docs.newapi.pro/zh/docs
 ================================================
 INFO_EOF
 
-chmod 600 "$INFO_FILE"
-log_success "配置信息已保存: $INFO_FILE"
+log_success "凭据信息已保存: $CREDENTIALS_FILE"
 
 # ==================== 完成 ====================
 clear 2>/dev/null || true
-cat "$INFO_FILE"
+printf '%s\n' "================================================"
+printf '%s\n' "       New-API Docker 部署完成 (v${COMMON_VERSION})"
+printf '%s\n' "================================================"
+printf '访问地址: %s\n' "$ACCESS_URL"
+printf '凭据文件: %s\n' "$CREDENTIALS_FILE"
+printf '%s\n' "请到凭据文件中查看数据库密码、Redis 密码和 Session Secret。"
 echo ""
 
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${GREEN}✅ New-API 部署完成！${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo -e "📋 信息文件: ${YELLOW}$INFO_FILE${NC}"
+echo -e "🔐 凭据文件: ${YELLOW}$CREDENTIALS_FILE${NC}"
 echo -e "🌐 访问地址: ${GREEN}$ACCESS_URL${NC}"
 echo -e "📊 服务状态: ${CYAN}cd $SERVICE_DIR && $COMPOSE_CMD ps${NC}"
 echo ""

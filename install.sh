@@ -104,7 +104,8 @@ bootstrap_full_repo() {
         || [ ! -f "$root_dir/docker/install.sh" ] \
         || [ ! -f "$root_dir/cliproxyapi/install.sh" ] \
         || [ ! -f "$root_dir/new-api/install.sh" ] \
-        || [ ! -f "$root_dir/pi-coding-agent/install.sh" ]; then
+        || [ ! -f "$root_dir/pi-coding-agent/install.sh" ] \
+        || [ ! -f "$root_dir/lib/credentials.sh" ]; then
         echo "[ERROR] 下载的安装包不完整。" >&2
         rm -rf "$tmp_dir"
         exit 1
@@ -131,7 +132,8 @@ if [ ! -f "$INSTALL_DIR/maintenance/install.sh" ] \
     || [ ! -f "$INSTALL_DIR/docker/install.sh" ] \
     || [ ! -f "$INSTALL_DIR/cliproxyapi/install.sh" ] \
     || [ ! -f "$INSTALL_DIR/new-api/install.sh" ] \
-    || [ ! -f "$INSTALL_DIR/pi-coding-agent/install.sh" ]; then
+    || [ ! -f "$INSTALL_DIR/pi-coding-agent/install.sh" ] \
+    || [ ! -f "$INSTALL_DIR/lib/credentials.sh" ]; then
     bootstrap_full_repo "$@"
 fi
 
@@ -1289,21 +1291,26 @@ show_docker_overview() {
 }
 
 show_cliproxy_overview() {
-    local mode service_state conf_path nginx_conf version_text
+    local mode service_state conf_path credentials_file nginx_conf version_text
     mode="未部署"
     service_state="未运行"
     conf_path="-"
+    credentials_file="未生成"
     version_text="-"
 
     if [ -f /opt/docker-services/cliproxyapi/docker-compose.yml ]; then
         mode="Docker Compose"
         service_state=$(compose_running_text /opt/docker-services/cliproxyapi)
         conf_path="/opt/docker-services/cliproxyapi/config.yaml"
+        credentials_file="/opt/docker-services/cliproxyapi/hongaibox-credentials.txt"
+        [ ! -f "$credentials_file" ] && credentials_file="未生成"
         version_text=$(cat /opt/docker-services/cliproxyapi/version.txt 2>/dev/null || echo "镜像版本未记录")
     elif [ -f /opt/cliproxyapi/version.txt ] || [ -f /etc/systemd/system/cliproxyapi.service ]; then
         mode="裸机 Systemd"
         service_state=$(service_active_text cliproxyapi)
         conf_path="/etc/cliproxyapi/config.yaml"
+        credentials_file="/opt/cliproxyapi/hongaibox-credentials.txt"
+        [ ! -f "$credentials_file" ] && credentials_file="未生成"
         version_text=$(cat /opt/cliproxyapi/version.txt 2>/dev/null || echo "未知")
     fi
 
@@ -1314,14 +1321,15 @@ show_cliproxy_overview() {
     overview_item "运行状态" "$service_state"
     overview_item "版本/镜像" "$version_text"
     overview_item "配置文件" "$conf_path"
+    overview_item "凭据文件" "$credentials_file"
     overview_item "Nginx 配置" "$nginx_conf"
 }
 
 show_newapi_overview() {
-    local service_state info_file nginx_conf db_type
+    local service_state credentials_file nginx_conf db_type
     service_state=$(compose_running_text /opt/docker-services/new-api)
-    info_file="/opt/docker-services/new-api/newapi_info.txt"
-    [ ! -f "$info_file" ] && info_file="未生成"
+    credentials_file="/opt/docker-services/new-api/hongaibox-credentials.txt"
+    [ ! -f "$credentials_file" ] && credentials_file="未生成"
 
     nginx_conf=$(find /etc/nginx/conf.d -maxdepth 1 -type f -name '*.conf' -exec grep -l 'NEW-API-START' {} \; 2>/dev/null | paste -sd, - || true)
     [ -z "$nginx_conf" ] && nginx_conf="未检测到"
@@ -1337,7 +1345,7 @@ show_newapi_overview() {
 
     overview_item "部署状态" "$service_state"
     overview_item "数据库" "$db_type"
-    overview_item "信息文件" "$info_file"
+    overview_item "凭据文件" "$credentials_file"
     overview_item "Nginx 配置" "$nginx_conf"
     overview_item "服务目录" "/opt/docker-services/new-api"
 }

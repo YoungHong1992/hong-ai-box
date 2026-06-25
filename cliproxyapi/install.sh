@@ -30,8 +30,13 @@
 
 set -euo pipefail
 
-# ==================== 自包含公共函数 ====================
-# 本脚本可独立运行，不依赖外部公共库。
+HONGAIBOX_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HONGAIBOX_REPO_DIR="$(cd "$HONGAIBOX_SCRIPT_DIR/.." && pwd)"
+# shellcheck source=../lib/credentials.sh
+source "$HONGAIBOX_REPO_DIR/lib/credentials.sh"
+
+# ==================== 公共函数 ====================
+# 本脚本可在完整仓库内独立运行，并复用 ../lib 公共库。
 # shellcheck disable=SC2034
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -732,7 +737,7 @@ select_deploy_mode() {
 # ==================== Docker Compose 部署 ====================
 
 run_docker_deploy() {
-    local backup_dir="" access_url management_url protocol access_mode_text info_file domain_ssl_dir conf_file
+    local backup_dir="" access_url management_url protocol access_mode_text credentials_file domain_ssl_dir conf_file
 
     log_step "[1/7] 创建 Docker Compose 目录..."
     mkdir -p "$DOCKER_SERVICE_DIR" "$DOCKER_AUTH_DIR" "$DOCKER_LOG_DIR"
@@ -799,8 +804,7 @@ tls:
 YAML_EOF
         chmod 600 "$DOCKER_CONFIG_FILE"
         log_success "配置文件: $DOCKER_CONFIG_FILE"
-        log_info "API 密钥 1: $API_KEY_1"
-        log_info "API 密钥 2: $API_KEY_2"
+        log_success "API 密钥已生成并写入配置文件（不会输出到日志）"
     else
         log_info "保留现有配置文件: $DOCKER_CONFIG_FILE"
     fi
@@ -1086,11 +1090,11 @@ NGX_H2
         access_url="未检测到（请查看现有 Nginx 配置）"
         management_url="$access_url"
     fi
-    info_file="$DOCKER_SERVICE_DIR/cliproxyapi_info.txt"
+    credentials_file="$DOCKER_SERVICE_DIR/hongaibox-credentials.txt"
 
     {
         echo "================================================"
-        echo "       CliproxyAPI Docker Compose 部署完成 (v${COMMON_VERSION})"
+        echo "       CliproxyAPI Docker Compose 凭据信息 (v${COMMON_VERSION})"
         echo "================================================"
         echo "部署时间: $(date '+%Y-%m-%d %H:%M:%S')"
         echo "部署方式: Docker Compose"
@@ -1106,6 +1110,22 @@ NGX_H2
             echo ""
             echo "[管理面板]"
             echo "登录密码:  $ADMIN_SECRET"
+            echo ""
+        else
+            echo "[API 密钥]"
+            key_index=1
+            while IFS= read -r existing_key; do
+                echo "密钥 $key_index:    $existing_key"
+                ((key_index+=1))
+            done < <(extract_yaml_list_values "$DOCKER_CONFIG_FILE" "api-keys")
+            [ "$key_index" -eq 1 ] && echo "未检测到；请查看配置文件: $DOCKER_CONFIG_FILE"
+            echo ""
+            echo "[管理面板]"
+            if [ -n "$ADMIN_SECRET" ]; then
+                echo "登录密码:  $ADMIN_SECRET"
+            else
+                echo "未检测到；请查看配置文件: $DOCKER_CONFIG_FILE"
+            fi
             echo ""
         fi
         echo "[服务目录]"
@@ -1131,17 +1151,23 @@ NGX_H2
             echo "备份目录:  $backup_dir"
         fi
         echo "================================================"
-    } > "$info_file"
-    chmod 600 "$info_file"
+    } | write_credentials_file "$credentials_file"
+    log_success "凭据信息已保存: $credentials_file"
 
     clear 2>/dev/null || true
-    cat "$info_file"
+    printf '%s\n' "================================================"
+    printf '%s\n' "       CliproxyAPI Docker Compose 部署完成 (v${COMMON_VERSION})"
+    printf '%s\n' "================================================"
+    printf '访问地址: %s\n' "$access_url"
+    printf '管理界面: %s\n' "$management_url"
+    printf '凭据文件: %s\n' "$credentials_file"
+    printf '%s\n' "请到凭据文件中查看 API 密钥和管理面板密码。"
     echo ""
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}✅ CliproxyAPI Docker Compose 部署完成！${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    echo -e "📋 信息文件: ${YELLOW}$info_file${NC}"
+    echo -e "🔐 凭据文件: ${YELLOW}$credentials_file${NC}"
     echo -e "🌐 访问地址: ${GREEN}$access_url${NC}"
     echo -e "📊 服务状态: ${CYAN}cd $DOCKER_SERVICE_DIR && $COMPOSE_CMD ps${NC}"
     echo ""
@@ -1509,8 +1535,7 @@ tls:
 YAML_EOF
 
     log_success "配置文件: $CONFIG_DIR/config.yaml"
-    log_info "API 密钥 1: $API_KEY_1"
-    log_info "API 密钥 2: $API_KEY_2"
+    log_success "API 密钥已生成并写入配置文件（不会输出到日志）"
 fi
 
 # ==================== SSL 证书处理 ====================
@@ -1799,6 +1824,41 @@ SERVER_IP=$(detect_server_ip)
 clear 2>/dev/null || true
 echo -e "${GREEN}"
 if [ "$IS_UPGRADE" = true ]; then
+    CREDENTIALS_FILE="$INSTALL_DIR/hongaibox-credentials.txt"
+    if [ -f "$CONFIG_DIR/config.yaml" ]; then
+        {
+            echo "================================================"
+            echo "       CliproxyAPI 裸机 Systemd 凭据信息 (v${COMMON_VERSION})"
+            echo "================================================"
+            echo "更新时间: $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "部署方式: 裸机 Systemd"
+            echo "旧版本:    v$CURRENT_VERSION"
+            echo "新版本:    v$LATEST_VERSION"
+            echo ""
+            echo "[API 密钥]"
+            key_index=1
+            while IFS= read -r existing_key; do
+                echo "密钥 $key_index:    $existing_key"
+                ((key_index+=1))
+            done < <(extract_yaml_list_values "$CONFIG_DIR/config.yaml" "api-keys")
+            [ "$key_index" -eq 1 ] && echo "未检测到；请查看配置文件: $CONFIG_DIR/config.yaml"
+            echo ""
+            echo "[管理面板]"
+            if [ -n "$ADMIN_SECRET" ]; then
+                echo "登录密码:  $ADMIN_SECRET"
+            else
+                echo "未检测到；请查看配置文件: $CONFIG_DIR/config.yaml"
+            fi
+            echo ""
+            echo "[配置信息]"
+            echo "配置文件:  $CONFIG_DIR/config.yaml"
+            echo "数据目录:  $DATA_DIR"
+            echo "备份位置:  $BACKUP_DIR"
+            echo "================================================"
+        } | write_credentials_file "$CREDENTIALS_FILE"
+        log_success "凭据信息已保存: $CREDENTIALS_FILE"
+    fi
+
     cat <<EOF
 ================================================
        CliproxyAPI 升级成功！(v${COMMON_VERSION})
@@ -1811,6 +1871,7 @@ EOF
     echo -e "${CYAN}[配置保留]${NC}"
     echo -e "配置文件:   已保留"
     echo -e "数据目录:   已保留"
+    echo -e "凭据文件:   $CREDENTIALS_FILE"
     echo -e "备份位置:   $BACKUP_DIR"
 else
     if [ "$USE_HTTP_ONLY" = true ]; then
@@ -1823,6 +1884,38 @@ else
         PROTOCOL="https"
         ACCESS_MODE_TEXT="IP 模式"
     fi
+
+    CREDENTIALS_FILE="$INSTALL_DIR/hongaibox-credentials.txt"
+    {
+        echo "================================================"
+        echo "       CliproxyAPI 裸机 Systemd 凭据信息 (v${COMMON_VERSION})"
+        echo "================================================"
+        echo "部署时间: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "部署方式: 裸机 Systemd"
+        echo "版本:      v$LATEST_VERSION"
+        echo "访问模式:  $ACCESS_MODE_TEXT"
+        echo "服务器 IP: $SERVER_IP"
+        echo "访问地址:  ${PROTOCOL}://$DOMAIN"
+        echo "管理界面:  ${PROTOCOL}://$DOMAIN/management.html"
+        echo ""
+        echo "[API 密钥]"
+        echo "密钥 1:    $API_KEY_1"
+        echo "密钥 2:    $API_KEY_2"
+        echo ""
+        echo "[管理面板]"
+        echo "登录密码:  $ADMIN_SECRET"
+        echo ""
+        echo "[配置信息]"
+        echo "配置文件:  $CONFIG_DIR/config.yaml"
+        echo "数据目录:  $DATA_DIR"
+        echo "日志文件:  $LOG_DIR/cliproxyapi.log"
+        echo ""
+        echo "[SSL 证书]"
+        echo "类型:      ${SSL_TYPE:-已存在}"
+        [ -n "$DOMAIN" ] && echo "证书目录:  $SSL_DIR/$DOMAIN/"
+        echo "================================================"
+    } | write_credentials_file "$CREDENTIALS_FILE"
+    log_success "凭据信息已保存: $CREDENTIALS_FILE"
 
     cat <<EOF
 ================================================
@@ -1844,13 +1937,9 @@ $( [ "$USE_HTTP_ONLY" = false ] && [ "$USE_DOMAIN" = false ] && echo "
 - 浏览器会提示证书不安全，请点击「高级」→「继续访问」
 - API 客户端需要关闭 SSL 验证或信任自签名证书" )
 
-[API 密钥]
-密钥 1:    $API_KEY_1
-密钥 2:    $API_KEY_2
-
-[管理面板]
-访问地址:  ${PROTOCOL}://$DOMAIN/management.html
-登录密码:  $ADMIN_SECRET
+[凭据信息]
+凭据文件:  $CREDENTIALS_FILE
+请到凭据文件中查看 API 密钥和管理面板密码。
 
 [配置信息]
 版本:      v$LATEST_VERSION

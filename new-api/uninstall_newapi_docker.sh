@@ -701,7 +701,8 @@ if [[ ! "$BACKUP_CHOICE" =~ ^[Nn]$ ]]; then
     mkdir -p "$BACKUP_DIR"
 
     [ -f "$SERVICE_DIR/docker-compose.yml" ] && cp "$SERVICE_DIR/docker-compose.yml" "$BACKUP_DIR/" && log_success "已备份 docker-compose.yml"
-    [ -f "$SERVICE_DIR/newapi_info.txt" ] && cp "$SERVICE_DIR/newapi_info.txt" "$BACKUP_DIR/" && log_success "已备份 newapi_info.txt"
+    [ -f "$SERVICE_DIR/hongaibox-credentials.txt" ] && cp "$SERVICE_DIR/hongaibox-credentials.txt" "$BACKUP_DIR/" && log_success "已备份 hongaibox-credentials.txt"
+    [ -f "$SERVICE_DIR/newapi_info.txt" ] && cp "$SERVICE_DIR/newapi_info.txt" "$BACKUP_DIR/" && log_success "已备份旧版 newapi_info.txt"
 
     if $COMPOSE_CMD ps 2>/dev/null | grep -q "Up"; then
         log_info "正在导出数据库..."

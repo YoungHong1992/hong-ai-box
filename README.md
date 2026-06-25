@@ -48,7 +48,7 @@ sudo ./install.sh
 
 ### 单独安装某个服务
 
-每个组件目录都可独立进入并运行统一命名的 `install.sh`；脚本已自包含，不依赖外部公共脚本。
+在完整仓库内，每个组件目录都可独立进入并运行统一命名的 `install.sh`；组件脚本会复用仓库内 `lib/` 公共库，请不要只复制单个组件脚本运行。
 
 ```bash
 cd maintenance && sudo ./install.sh        # 安装服务器维护基线
@@ -69,6 +69,7 @@ cd ../pi-coding-agent && sudo ./install.sh # 安装 Pi
 ```
 hong-ai-box/
 ├── install.sh                  # 🎯 总入口：部署常用 AI 组件
+├── lib/                        # 公共 Bash 工具库（凭据写入等）
 ├── maintenance/                # 服务器维护基线 (fail2ban / swap / 日志限制)
 ├── nginx/                      # Nginx (HTTP/3 + BBR)
 ├── docker/                     # Docker Engine + Compose
@@ -76,6 +77,7 @@ hong-ai-box/
 ├── new-api/                    # AI 模型网关
 ├── pi-coding-agent/            # 终端 AI 编程助手
 ├── docs/                       # 辅助文档
+├── tests/                      # 静态检查、凭据与集成测试脚本
 └── README.md
 ```
 
@@ -125,17 +127,17 @@ hong-ai-box/
 
 ## 🧪 开发
 
-### ShellCheck 静态检查
+### 本地测试
 
 ```bash
 # 安装 shellcheck
 apt-get install -y shellcheck
 
-# 语法检查
-find . -path ./.git -prune -o -name '*.sh' -print0 | xargs -0 -n1 bash -n
+# 静态检查 + 仓库测试
+./tests/run.sh
 
-# ShellCheck
-find . -path ./.git -prune -o -name '*.sh' -print0 | xargs -0 shellcheck -x -S warning
+# 真实安装幂等测试（会修改当前机器维护基线，建议只在 CI/临时机执行）
+sudo ./tests/test-maintenance-idempotency.sh
 ```
 
 ---
